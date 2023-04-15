@@ -1,0 +1,8 @@
+Pillow
+natsort
+tqdm
+matplotlib
+numpy
+segmentation_models_pytorch
+albumentations
+tensorboard
