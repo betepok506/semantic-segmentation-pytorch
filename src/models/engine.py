@@ -2,6 +2,8 @@ import os
 
 import torchvision.utils as vutils
 import torch
+from torch import nn
+import torch.nn.functional as F
 import time
 import numpy as np
 from tqdm import tqdm
@@ -65,8 +67,13 @@ def train_loop(model,
 
             image = image_tiles.to(device)
             mask = mask_tiles.to(device)
+            # mask2 =  mask.view(-1)
             # forward
             output = model(image)
+            # output = output.view(output.size(0), output.size(1), -1)
+            # output = output.transpose(1, 2).contiguous()
+            # output = output.view(-1, output.size(2))
+            # mask2 = mask.view(-1)
             loss = criterion(output, mask)
 
             iou_score += metric_iou(output, mask)
@@ -97,7 +104,6 @@ def train_loop(model,
         val_acc_epoch = val_accuracy / len(val_loader)
         val_losses_epoch = val_loss / len(val_loader)
 
-
         train_losses.append(train_losses_epoch)
         val_losses.append(val_losses_epoch)
 
@@ -108,7 +114,7 @@ def train_loop(model,
             decrease += 1
             if decrease % 5 == 0:
                 path_to_save_checkpoint = os.path.join(params.save_to_checkpoint,
-                                               f"checkpoint_{params.encoder}.pth")
+                                                       f"checkpoint_{params.encoder}.pth")
                 logger.info(f"Save checkpoint to: {path_to_save_checkpoint}")
                 # print('saving model...')
                 torch.save(model, path_to_save_checkpoint)
@@ -201,15 +207,32 @@ def evaluate(model, val_loader, criterion, logger, epoch, label_color_map, devic
                                        convert_mask(mask.data.cpu().numpy())])
 
                 log_img = logger.concatenate_images(torch.tensor(true_masks, dtype=torch.uint8),
-                                                                torch.tensor(predicted_masks, dtype=torch.uint8),
-                                                                torch.mul(image, 255).permute(0, 2, 3, 1).cpu().to(
-                                                                    torch.uint8))
+                                                    torch.tensor(predicted_masks, dtype=torch.uint8),
+                                                    torch.mul(image, 255).permute(0, 2, 3, 1).cpu().to(
+                                                        torch.uint8))
 
                 logger.add_image(log_img, epoch, n_batch, num_batches,
-                                                    nrows=image.shape[0], normalize=False)
+                                 nrows=image.shape[0], normalize=False)
 
     return val_loss, val_accuracy, val_iou_score
 
 
 def load_model():
     pass
+
+
+class FocalLoss(nn.Module):
+    def __init__(self, alpha=1.0, gamma=2.0):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+
+    def forward(self, inputs, targets):
+        '''
+        :param inputs: batch_size * dim
+        :param targets: (batch,)
+        :return:
+        '''
+        bce_loss = F.cross_entropy(inputs, targets)
+        loss = self.alpha * (1 - torch.exp(-bce_loss)) ** self.gamma * bce_loss
+        return loss

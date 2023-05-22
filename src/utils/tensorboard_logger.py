@@ -88,7 +88,7 @@ class Logger:
         self.log_dir = r'runs/' + current_time + self.comment
         # test_log_dir = r'runs/' + current_time + self.comment + r'/test'
         # TensorBoard
-        self.writer = SummaryWriter(self.log_dir, comment=self.comment)
+        self.writer = SummaryWriter(log_dir=self.log_dir)
         if write_to_file:
             self.logger = get_logger(module_name, logging.INFO, self.log_dir)
         else:
@@ -108,7 +108,7 @@ class Logger:
     def debug(self, text):
         self.logger.debug(text)
 
-    def add_scalar(self, scalar, title, epoch):
+    def add_scalar(self, title, scalar, epoch):
         self.writer.add_scalar(title, scalar, epoch)
 
     def concatenate_images(self, y_true, y_labels, images):

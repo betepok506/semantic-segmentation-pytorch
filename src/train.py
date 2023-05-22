@@ -4,7 +4,7 @@ from torch import nn
 import segmentation_models_pytorch as smp
 from torch.utils.data import Dataset, DataLoader
 import albumentations as A
-
+from torch.utils.tensorboard import SummaryWriter
 # Reading Dataset, vis and miscellaneous
 from PIL import Image
 import torchvision.utils as vutils
@@ -14,23 +14,23 @@ import sys
 import logging
 import numpy as np
 import torch.nn as nn
-from src.models.engine import train_loop
+from src.models.engine import train_loop, FocalLoss
 from src.utils.tensorboard_logger import Logger
-from src.data.dataset import SemanticSegmentationDataset
+from src.data.dataset import SemanticSegmentationDatasetLandsat8
 
 
 class Params:
-    path_to_directory_train_images = 'D:\diplom_project\datasets\Satelite\data\data_for_keras_aug\\train_images\\train'
-    path_to_directory_train_masks = 'D:\diplom_project\datasets\Satelite\data\data_for_keras_aug\\train_masks\\train'
-    path_to_directory_valid_images = 'D:\diplom_project\datasets\Satelite\data\data_for_keras_aug\\val_images\\val'
-    path_to_directory_valid_masks = 'D:\diplom_project\datasets\Satelite\data\data_for_keras_aug\\val_masks\\val'
+    path_to_directory_train_images = 'D:\\projects_andrey\\datasets\\segmentations\\landsat8\\images\\train'
+    path_to_directory_train_masks = 'D:\\projects_andrey\\datasets\\segmentations\\landsat8\\masks\\train'
+    path_to_directory_valid_images = 'D:\\projects_andrey\\datasets\\segmentations\\landsat8\\images\\val'
+    path_to_directory_valid_masks = 'D:\\projects_andrey\\datasets\\segmentations\\landsat8\\masks\\\\val'
     path_to_model_weight = ""
     save_to_checkpoint = ""
-    encoder = 'timm-efficientnet-b0'
+    encoder = 'resnet34'
     encoder_weights = 'imagenet'
     activation = "softmax2d"
     num_epochs = 100
-    batch_size = 16
+    batch_size = 8
     img_size = (256, 256)
     max_lr = 1e-3
     weight_decay = 1e-4
@@ -104,7 +104,7 @@ def train():
     os.makedirs(params.save_to_checkpoint, exist_ok=True)
 
     # Creating the training dataset
-    train_dataset = SemanticSegmentationDataset(
+    train_dataset = SemanticSegmentationDatasetLandsat8(
         img_directory=params.path_to_directory_train_images,
         label_directory=params.path_to_directory_train_masks,
         transform=transform,
@@ -112,7 +112,7 @@ def train():
 
     train_loader = DataLoader(train_dataset, batch_size=params.batch_size, num_workers=0, shuffle=True, drop_last=True)
 
-    val_dataset = SemanticSegmentationDataset(
+    val_dataset = SemanticSegmentationDatasetLandsat8(
         img_directory=params.path_to_directory_valid_images,
         label_directory=params.path_to_directory_valid_masks,
         train_or_valid=True)
@@ -120,15 +120,18 @@ def train():
     val_loader = DataLoader(val_dataset, batch_size=params.batch_size, num_workers=0, shuffle=False, drop_last=True)
 
     # create segmentation model with pretrained encoder
-    model = smp.Unet(
+    model = smp.UnetPlusPlus(
         encoder_name=params.encoder,
         encoder_weights=params.encoder_weights,
         classes=len(train_dataset.labels),
         in_channels=3,
-        activation=params.activation,
+        # activation="softmax",
+        activation=None
     )
 
-    criterion = nn.CrossEntropyLoss()
+    # criterion = nn.CrossEntropyLoss(ignore_index=0)
+    criterion = nn.BCELoss()
+    # criterion = FocalLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=params.max_lr, weight_decay=params.weight_decay)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, params.max_lr, epochs=params.num_epochs,
                                                     steps_per_epoch=len(train_loader))

@@ -6,3 +6,4 @@ numpy
 segmentation_models_pytorch
 albumentations
 tensorboard
+rasterio
