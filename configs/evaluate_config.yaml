@@ -1,0 +1,16 @@
+model:
+  name_model_or_path: "./testing_dir/checkpoint-3120"
+  name_image_processor_or_path: "nvidia/mit-b0"
+
+dataset:
+  path_to_data: "D:\\projects_andrey\\datasets\\segmentations\\landsat8"
+  path_to_info_classes: "D:\\projects_andrey\\datasets\\segmentations\\landsat8\\classes.json"
+
+evaluating_params:
+  output_dir: "testing_dir"
+  eval_batch_size: 32
+  save_total_limit: 3
+  evaluation_strategy: "steps"
+  logging_steps: 1
+  remove_unused_columns: False
+  report_to: "tensorboard"

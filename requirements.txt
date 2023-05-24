@@ -6,3 +6,6 @@ numpy
 segmentation_models_pytorch
 albumentations
 tensorboard
+
+marshmallow_dataclass
+hydra-core

@@ -1,0 +1,21 @@
+model:
+  name_model_or_path: "nvidia/mit-b0"
+  name_image_processor_or_path: "nvidia/mit-b0"
+
+dataset:
+  path_to_data: "D:\\projects_andrey\\datasets\\segmentations\\landsat8"
+  path_to_info_classes: "D:\\projects_andrey\\datasets\\segmentations\\landsat8\\classes.json"
+
+training_params:
+  lr: 6e-5
+  num_train_epochs: 50
+  output_dir: "testing_dir"
+  train_batch_size: 32
+  eval_batch_size: 32
+  save_total_limit: 3
+  evaluation_strategy: "epoch"
+  save_strategy: "epoch"
+  logging_steps: 1
+  eval_accumulation_steps: 5
+  remove_unused_columns: False
+  report_to: "tensorboard"

@@ -3,7 +3,10 @@ import numpy as np
 import torch
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
+from typing import List, Dict, Tuple, Union
 from natsort import natsorted
+from datasets import Dataset
+import datasets
 
 
 class SemanticSegmentationDataset(Dataset):
@@ -57,3 +60,58 @@ class SemanticSegmentationDataset(Dataset):
             img = img.float() / 255
 
             return img
+
+
+class TypesDataSpliting:
+    TRAIN = "train"
+    VALIDATION = 'validation'
+    TEST = "test"
+    TRAIN_VALIDATION = "train&validation"
+    TRAIN_TEST = "train&test"
+    ALL = 'all'
+
+
+class ConfigurationDataset:
+    name_folder_images = "images"
+    name_folder_masks = "masks"
+    name_folder_train = "train"
+    name_folder_test = "test"
+    name_folder_validation = "val"
+
+
+def load_segmentation_dataset(data_dir: str, type_split: str = "all", config: ConfigurationDataset = None):
+    if config is None:
+        config = ConfigurationDataset()
+
+    result = []
+    if type_split in [TypesDataSpliting.ALL, TypesDataSpliting.TRAIN,
+                      TypesDataSpliting.TRAIN_VALIDATION, TypesDataSpliting.TRAIN_TEST]:
+        train_dataset = _create_segmentation_dataset(data_dir, config, config.name_folder_train)
+        result.append(train_dataset)
+
+    if type_split in [TypesDataSpliting.ALL, TypesDataSpliting.VALIDATION,
+                      TypesDataSpliting.TRAIN_VALIDATION]:
+        val_dataset = _create_segmentation_dataset(data_dir, config, config.name_folder_validation)
+        result.append(val_dataset)
+
+    if type_split in [TypesDataSpliting.ALL, TypesDataSpliting.TEST, TypesDataSpliting.TRAIN_TEST]:
+        test_dataset = _create_segmentation_dataset(data_dir, config, config.name_folder_test)
+        result.append(test_dataset)
+
+    return result
+
+
+def _get_paths_to_files(data_dir: str, name_folder: str, type_split: str) -> List[str]:
+    names_files = natsorted(os.listdir(os.path.join(data_dir, name_folder, type_split)))
+    paths_list = [os.path.join(data_dir, name_folder, type_split, x) for x in names_files]
+    return paths_list
+
+
+def _create_segmentation_dataset(data_dir: str, config: ConfigurationDataset, name_folder_splitting: str):
+    img_list = _get_paths_to_files(data_dir, config.name_folder_images, name_folder_splitting)
+    masks_list = _get_paths_to_files(data_dir, config.name_folder_masks, name_folder_splitting)
+
+    dataset = Dataset.from_dict({"image": img_list, "annotation": masks_list}) \
+        .cast_column("image", datasets.Image()) \
+        .cast_column("annotation", datasets.Image())
+    return dataset
