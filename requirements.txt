@@ -9,3 +9,6 @@ tensorboard
 
 marshmallow_dataclass
 hydra-core
+datasets
+transformers
+evaluate

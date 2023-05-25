@@ -20,7 +20,7 @@ def compute_metrics(eval_pred, metric, num_labels, ignore_index):
             references=labels,
             num_labels=num_labels,
             ignore_index=ignore_index,
-            do_reduce_labels=False,
+            reduce_labels=False,
         )
         for key, value in metrics.items():
             if type(value) is np.ndarray:
