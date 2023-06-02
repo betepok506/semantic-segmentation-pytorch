@@ -97,6 +97,20 @@ def train(params: TrainingConfig):
     )
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     # image_processor = MaskFormerImageProcessor(
     #     do_reduce_labels=False,
     #     size=(256, 256),
@@ -105,21 +119,21 @@ def train(params: TrainingConfig):
     #     do_rescale=False,
     #     do_normalize=False,
     # )
-    print(image_processor)
+    # print(image_processor)
 
     train_transforms_fn = functools.partial(train_transforms, image_processor=image_processor)
     val_transforms_fn = functools.partial(val_transforms, image_processor=image_processor)
     train_dataset.set_transform(train_transforms_fn)
     val_dataset.set_transform(val_transforms_fn)
 
-    train_loader = DataLoader(train_dataset, batch_size=4, num_workers=0, shuffle=True, drop_last=True)
-    val_loader = DataLoader(val_dataset, batch_size=4, num_workers=0, shuffle=True, drop_last=True)
+    train_loader = DataLoader(train_dataset, batch_size=params.training_params.train_batch_size, num_workers=0, shuffle=True, drop_last=True)
+    val_loader = DataLoader(val_dataset, batch_size=params.training_params.eval_batch_size, num_workers=0, shuffle=True, drop_last=True)
 
     metric = evaluate.load("mean_iou")
-    compute_metrics_fn = functools.partial(compute_metrics,
-                                           metric=metric,
-                                           ignore_index=0,
-                                           num_labels=num_labels)
+    # compute_metrics_fn = functools.partial(compute_metrics,
+    #                                        metric=metric,
+    #                                        ignore_index=0,
+    #                                        num_labels=num_labels)
 
     # model = AutoModelForSemanticSegmentation.from_pretrained(params.model.name_model_or_path,
     #                                                          id2label=id2label,
@@ -135,7 +149,7 @@ def train(params: TrainingConfig):
 
     model.to(device)
 
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(ignore_index=0)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, 1e-5, epochs=30,
                                                     steps_per_epoch=len(train_dataset))
@@ -149,6 +163,7 @@ def train(params: TrainingConfig):
                          label_color_map=label_color_map,
                          params=params,
                          metric=metric,
+                         num_labels=num_labels,
                          logger=logger,
                          device=device)
 
@@ -191,6 +206,7 @@ def train_loop(model,
                params,
                logger,
                metric,
+               num_labels,
                device="cpu",
                patch=False):
     # logger_tensorboard = Logger(model_name=params.encoder, data_name='example')
@@ -206,6 +222,7 @@ def train_loop(model,
     fit_time = time.time()
     num_batches = len(train_loader)
     from src.evaluate.metrics import compute_metrics
+    metrics = {}
     for epoch in range(params.training_params.num_train_epochs):
         since = time.time()
         running_loss, iou_score, accuracy = 0, 0, 0
@@ -219,12 +236,17 @@ def train_loop(model,
             # forward
             output = model(image)
             loss = criterion(output, mask)
-            met = compute_metrics((output.detach().cpu().numpy(),
-                                   mask.detach().cpu().numpy()),
-                                  metric,
-                                  2,
-                                  0)
-            print(met)
+            cur_metrics = compute_metrics((output.detach().cpu().numpy(),
+                                           mask.detach().cpu().numpy()),
+                                          metric,
+                                          num_labels,
+                                          0)
+            for k, v in cur_metrics.items():
+                if k not in metrics:
+                    metrics[k] = v
+                else:
+                    metrics[k] += v
+
             # iou_score += metric_iou(output, mask)
             # accuracy += metric_pixel_accuracy(output, mask)
 
@@ -236,6 +258,24 @@ def train_loop(model,
             running_loss += loss.item()
 
         train_losses_epoch = running_loss / len(train_loader)
+        validation_losses_epoch, validation_metrics = _evaluate(model,
+                                                                val_loader,
+                                                                criterion,
+                                                                logger,
+                                                                epoch,
+                                                                label_color_map,
+                                                                metric,
+                                                                device,
+                                                                num_labels,
+                                                                patch)
+
+        logger.info("IOU Training")
+        for k, v in metrics.items():
+            logger.info(f"{k}: {v }")
+
+        logger.info("EvaluaTING")
+        for k, v in validation_metrics.items():
+            logger.info(f"{k}: {v }")
 
         if min_loss > train_losses_epoch:
             # print('Loss Decreasing.. {:.3f} >> {:.3f} '.format(min_loss, (val_loss / len(val_loader))))
@@ -326,50 +366,65 @@ def train_loop(model,
     # return history
 
 
-def _evaluate(model, val_loader, criterion, logger, epoch, label_color_map, device, patch):
+def _evaluate(model,
+              val_loader,
+              criterion,
+              logger,
+              epoch,
+              label_color_map,
+              metric,
+              device,
+              num_labels,
+              patch):
     model.eval()
     val_loss, val_accuracy, val_iou_score = 0, 0, 0
     # Выбрать рандомный элемент
     num_batches = len(val_loader)
     loss = 0
+    metrics = {}
     # validation loop
     with torch.no_grad():
-        for n_batch, data in enumerate(tqdm(val_loader, ncols=NCOLS, desc=f"Validating...")):
-            image_tiles, mask_tiles = data
-
-            if patch:
-                bs, n_tiles, c, h, w = image_tiles.size()
-
-                image_tiles = image_tiles.view(-1, c, h, w)
-                mask_tiles = mask_tiles.view(-1, h, w)
-
-            image = image_tiles.to(device)
-            mask = mask_tiles.to(device)
+        for n_batch, data in enumerate(tqdm(val_loader, ncols=80, desc=f"Training...")):
+            image = data["pixel_values"].type(torch.float32).to(device)
+            # mask = data["mask_labels"].to(device)
+            mask = data["labels"].to(device)
             output = model(image)
 
             # evaluation metrics
-            val_iou_score += metric_iou(output, mask)
-            val_accuracy += metric_pixel_accuracy(output, mask)
+            # val_iou_score += metric_iou(output, mask)
+            # val_accuracy += metric_pixel_accuracy(output, mask)
 
             # loss
             loss = criterion(output, mask)
+            cur_metrics = compute_metrics((output.detach().cpu().numpy(),
+                                           mask.detach().cpu().numpy()),
+                                          metric,
+                                          num_labels,
+                                          0)
+            for k, v in cur_metrics.items():
+                if k not in metrics:
+                    metrics[k] = v
+                else:
+                    metrics[k] += v
             val_loss += loss.item()
 
-            if n_batch == 0:
-                predicted_masks = np.array([draw_segmentation_map(image_pred, label_color_map) for image_pred in
-                                            convert_mask(output.cpu().numpy())])
-                true_masks = np.array([draw_segmentation_map(image_true, label_color_map) for image_true in
-                                       convert_mask(mask.data.cpu().numpy())])
+            # if n_batch == 0:
+            #     predicted_masks = np.array([draw_segmentation_map(image_pred, label_color_map) for image_pred in
+            #                                 convert_mask(output.cpu().numpy())])
+            #     true_masks = np.array([draw_segmentation_map(image_true, label_color_map) for image_true in
+            #                            convert_mask(mask.data.cpu().numpy())])
+            #
+            #     log_img = logger.concatenate_images(torch.tensor(true_masks, dtype=torch.uint8),
+            #                                         torch.tensor(predicted_masks, dtype=torch.uint8),
+            #                                         torch.mul(image, 255).permute(0, 2, 3, 1).cpu().to(
+            #                                             torch.uint8))
+            #
+            #     logger.add_image(log_img, epoch, n_batch, num_batches,
+            #                      nrows=image.shape[0], normalize=False)
+    for k, v in metrics.items():
+        logger.info(f"{k}: {v}")
 
-                log_img = logger.concatenate_images(torch.tensor(true_masks, dtype=torch.uint8),
-                                                    torch.tensor(predicted_masks, dtype=torch.uint8),
-                                                    torch.mul(image, 255).permute(0, 2, 3, 1).cpu().to(
-                                                        torch.uint8))
-
-                logger.add_image(log_img, epoch, n_batch, num_batches,
-                                 nrows=image.shape[0], normalize=False)
-
-    return val_loss, val_accuracy, val_iou_score
+    return val_loss / len(val_loader), metrics
 
 
 if __name__ == "__main__":
