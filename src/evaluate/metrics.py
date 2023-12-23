@@ -27,3 +27,20 @@ def compute_metrics(eval_pred, metric, num_labels, ignore_index):
                 metrics[key] = value.tolist()
 
         return metrics
+
+
+def compute_metrics_smp(eval_pred, metric, num_labels, ignore_index):
+    with torch.no_grad():
+        pred_labels, labels = eval_pred
+        metrics = metric.compute(
+            predictions=pred_labels,
+            references=labels,
+            num_labels=num_labels,
+            ignore_index=ignore_index,
+            reduce_labels=False,
+        )
+        for key, value in metrics.items():
+            if type(value) is np.ndarray:
+                metrics[key] = value.tolist()
+
+        return metrics

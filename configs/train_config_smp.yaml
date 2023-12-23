@@ -1,0 +1,29 @@
+model:
+  encoder: "resnet34"
+  encoder_weights: "imagenet"
+  path_to_model_weight: "./models/Unet/checkpoint_timm-efficientnet-b0.pth"
+
+dataset:
+  path_to_data: "D:\\diploma_project\\datasets\\Dubai"
+  path_to_info_classes: "D:\\diploma_project\\datasets\\Dubai\\classes2grayscale.json"
+  path_to_decode_classes2rgb: "D:\\diploma_project\\datasets\\Dubai\\classes2rgb.json"
+  ignore_index: 5
+  num_labels: 6
+
+training_params:
+  lr: 6e-5
+  num_train_epochs: 50
+#  output_dir: "testing_dir"
+  train_batch_size: 8
+  eval_batch_size: 8
+  verbose: 1 # 0 - ничего не выводить, 1 сохранять изображения в папку output_dir_result
+  output_dir_result: "./result"
+  save_to_checkpoint: './models/checkpoints'
+  num_workers_data_loader: 4
+#  save_total_limit: 3
+#  evaluation_strategy: "epoch"
+#  save_strategy: "epoch"
+#  logging_steps: 1
+#  eval_accumulation_steps: 1
+#  remove_unused_columns: False
+  report_to: "tensorboard"
