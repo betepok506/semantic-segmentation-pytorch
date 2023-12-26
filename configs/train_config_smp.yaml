@@ -1,7 +1,8 @@
 model:
   encoder: "resnet34"
   encoder_weights: "imagenet"
-  path_to_model_weight: "./models/Unet/checkpoint_timm-efficientnet-b0.pth"
+  path_to_model_weight: ""
+#  path_to_model_weight: "./models/Unet/checkpoint_timm-efficientnet-b0.pth"
 
 dataset:
   path_to_data: "D:\\diploma_project\\datasets\\Dubai"
@@ -16,7 +17,7 @@ training_params:
 #  output_dir: "testing_dir"
   train_batch_size: 8
   eval_batch_size: 8
-  verbose: 1 # 0 - ничего не выводить, 1 сохранять изображения в папку output_dir_result
+  verbose: 0 # 0 - ничего не выводить, 1 сохранять изображения в папку output_dir_result
   output_dir_result: "./result"
   save_to_checkpoint: './models/checkpoints'
   num_workers_data_loader: 4

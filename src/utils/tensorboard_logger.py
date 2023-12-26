@@ -6,6 +6,7 @@ import errno
 import torchvision.utils as vutils
 from PIL import Image
 from torch.utils.tensorboard import SummaryWriter
+from pathlib import Path
 # from tensorboardX import SummaryWriter
 from matplotlib import pyplot as plt
 import pathlib
@@ -85,10 +86,11 @@ class Logger:
 
         current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_")
 
-        self.log_dir = r'runs/' + current_time + self.comment
-        # test_log_dir = r'runs/' + current_time + self.comment + r'/test'
+        self.log_dir = os.path.join(r'runs/', current_time + self.comment)
+        self.log_dir_tensorboard = os.path.join(self.log_dir, 'tensorboard')
+
         # TensorBoard
-        self.writer = SummaryWriter(self.log_dir, comment=self.comment)
+        self.writer = SummaryWriter(self.log_dir_tensorboard, comment=self.comment)
         if write_to_file:
             self.logger = get_logger(module_name, logging.INFO, self.log_dir)
         else:
@@ -108,8 +110,17 @@ class Logger:
     def debug(self, text):
         self.logger.debug(text)
 
-    def add_scalar(self, scalar, title, epoch):
+    def add_scalar(self, title, scalar, epoch):
+        '''
+        Если пишет что не найдена либа caffe2, проверить передаваемые параметры
+        '''
         self.writer.add_scalar(title, scalar, epoch)
+
+    def add_scalars(self, title, scalar, epoch):
+        '''
+        Если пишет что не найдена либа caffe2, проверить передаваемые параметры
+        '''
+        self.writer.add_scalars(title, scalar, epoch)
 
     def concatenate_images(self, y_true, y_labels, images):
         return torch.cat((y_true, y_labels, images)).permute(0, 3, 1, 2)
@@ -145,7 +156,9 @@ class Logger:
         self.writer.add_image(img_name, grid, step)
 
     def _save_torch_images(self, path_to_save, grid, epoch, n_batch):
-        result = Image.fromarray(grid.numpy().transpose(1, 2, 0))
+        # result = Image.fromarray(grid.numpy().transpose(1, 2, 0))
+        result = Image.fromarray((grid.numpy().transpose(1, 2, 0) * 255).astype(np.uint8))
+        # result = Image.fromarray(grid.numpy())
         result.save(f'{path_to_save}/epoch_{epoch}_batch_{n_batch}.png')
 
         # self.writer_train.add_scalar(

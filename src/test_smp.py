@@ -3,12 +3,14 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 import segmentation_models_pytorch as smp
 from segmentation_models_pytorch import DeepLabV3, Unet
-from torchvision.datasets import Cityscapes  # Используем Cityscapes в качестве примера, замените на свой датасет
+# from torchvision.datasets import Cityscapes  # Используем Cityscapes в качестве примера, замените на свой датасет
 from torch.utils.data import Dataset
+from pathlib import Path
 from natsort import natsorted
 from PIL import Image
 import matplotlib.pyplot as plt
 import os
+import random
 from src.evaluate.metrics import compute_metrics_smp
 import evaluate
 import numpy as np
@@ -16,9 +18,11 @@ import cv2 as cv
 import hydra
 import logging
 import json
+import time
 from src.utils.tensorboard_logger import get_logger
 
-logger = get_logger(__name__, logging.INFO, None)
+# logger = get_logger(__name__, logging.INFO, None)
+from src.utils.tensorboard_logger import Logger
 
 
 class AerialSegmentationDataset(Dataset):
@@ -126,18 +130,114 @@ def batch_reverse_one_hot(batch_images):
     return np.array(converted_images_batch)
 
 
-def evaluate_loop(model,
-                  val_loader,
-                  criterion,
-                  metrics,
-                  label_colors,
-                  params,
-                  epoch,
-                  device='cpu'):
-    model.eval()
-    val_loss = 0
+def convert_to_images(input_image, target_image, predict_image, label_colors):
+    converted_input_image = transforms.ToPILImage()(input_image.detach().cpu())
 
-    for inputs, targets in val_loader:
+    target_numpy = target_image.detach().cpu().numpy()
+    converted_target_image = colour_code_segmentation(reverse_one_hot(target_numpy), label_colors)
+
+    prediction_numpy = predict_image.detach().cpu().numpy()
+    converted_prediction_image = colour_code_segmentation(prediction_numpy, label_colors)
+
+    return converted_input_image, converted_target_image, converted_prediction_image
+
+
+class SegmentationMetrics:
+    '''Класс реализует подсчет и вывод метрик'''
+
+    def __init__(self, metrics, ignore_index, num_labels):
+        self.metrics = metrics
+        self.ignore_index = ignore_index
+        self.num_labels = num_labels
+        self.calculated_metrics = None
+
+    def compute_metrics_smp(self, eval_pred):
+        pred_labels, labels = eval_pred
+        result_metrics = {}
+        for cur_metric in self.metrics:
+            metrics = cur_metric.compute(
+                predictions=pred_labels,
+                references=labels,
+                num_labels=self.num_labels,
+                ignore_index=self.ignore_index,
+                reduce_labels=False,
+            )
+
+            for key, value in metrics.items():
+                if type(value) is np.ndarray:
+                    result_metrics[key] = value.tolist()
+                else:
+                    result_metrics[key] = value
+
+        if self.calculated_metrics is None:
+            self.calculated_metrics = result_metrics
+        else:
+            self.calculated_metrics = self.__update_metrics(self.calculated_metrics, result_metrics)
+
+    @staticmethod
+    def __update_metrics(metrics, updating_metrics):
+        '''Функция для обновления метрик'''
+        result = {}
+        for k, v in metrics.items():
+            if isinstance(v, list):
+                result[k] = np.nanmean(np.array([v, updating_metrics[k]]), axis=0)
+            else:
+                result[k] = (v + updating_metrics[k]) / 2
+        return result
+
+
+class InfoClasses:
+    def __init__(self):
+        self.classes2colors = None
+
+    def get_colors(self):
+        return list(self.classes2colors.values())
+
+    def load_json(self, path_to_file):
+        with open(path_to_file, "r") as read_file:
+            self.classes2colors = json.load(read_file)
+
+    def get_classes(self):
+        return list(self.classes2colors.keys())
+
+    def get_num_labels(self):
+        return len(self.classes2colors)
+
+
+# def update_metrics(metrics, updating_metrics):
+#     '''Функция для обновления метрик'''
+#     result = {}
+#     for k, v in metrics.items():
+#         if isinstance(v, list):
+#             result[k] = np.nanmean(np.array([v, updating_metrics[k]]), axis=0)
+#         else:
+#             result[k] = (v + updating_metrics[k]) / 2
+#     return result
+
+
+def evaluate_epoch(model,
+                   val_loader,
+                   criterion,
+                   metric,
+                   info_classes,
+                   params,
+                   epoch,
+                   logger,
+                   device='cpu'):
+    # Количество визуализируемых изображений
+    NUM_IMAGES_VISUALIZE = 4
+    val_loss = 0
+    # Количество батчей
+    num_batches = len(val_loader)
+
+    # Выбираем случайные батчи и для их последующей визуализации
+    random_indices = np.random.choice(len(val_loader),
+                                      size=int(np.ceil(NUM_IMAGES_VISUALIZE / val_loader.batch_size)),
+                                      replace=False)
+
+    model.eval()
+    start_time_evaluate_epoch = time.time()
+    for idx, (inputs, targets) in enumerate(val_loader):
         inputs, targets = inputs.to(device), targets.to(device)
 
         # Получение предсказаний
@@ -148,55 +248,85 @@ def evaluate_loop(model,
 
         predictions = torch.argmax(outputs, dim=1)
         converted_target_batch = batch_reverse_one_hot(targets.detach().cpu().numpy())
-        mean_iou_ = compute_metrics_smp([predictions.detach().cpu().numpy(), converted_target_batch],
-                                        metrics,
-                                        params.dataset.num_labels,
-                                        ignore_index=params.dataset.ignore_index)
 
-        logger.info(f'Mean IoU: {mean_iou_}')
+        # Подсчет метрик
+        metric.compute_metrics_smp([predictions.detach().cpu().numpy(), converted_target_batch])
 
-        if params.training_params.verbose >= 1:
-            for i in range(targets.shape[0]):
-                if i < 3:
-                    input_image = transforms.ToPILImage()(inputs[i].detach().cpu())
+        # Отображение примера сегментации в логере
+        if idx in random_indices:
+            disp_images = []
+            for idx_img in range(targets.shape[0]):
+                input_image, target_image, prediction_image = convert_to_images(inputs[idx_img],
+                                                                                targets[idx_img],
+                                                                                predictions[idx_img],
+                                                                                info_classes.get_colors())
+                disp_images.append(input_image)
+                disp_images.append(target_image)
+                disp_images.append(prediction_image)
 
-                    target_numpy = targets[i].detach().cpu().numpy()
-                    target_mask = colour_code_segmentation(reverse_one_hot(target_numpy), label_colors)
+                if len(disp_images) // 3 >= NUM_IMAGES_VISUALIZE:
+                    break
 
-                    prediction_numpy = predictions[i].detach().cpu().numpy()
-                    prediction_mask = colour_code_segmentation(prediction_numpy, label_colors)
+            images = np.stack(disp_images, axis=0)
+            # Меняем каналы в формат B C H W
+            images = np.transpose(images, (0, 3, 1, 2))
+            images = torch.Tensor(images)
+            # Добавляем картинки в логер
+            logger.add_image(images, epoch, idx, len(val_loader),
+                             nrows=3,  # По 3 изображения в строке
+                             normalize=True)
 
-                    fig = visualize(
-                        original_image=input_image,
-                        target_image=target_mask,
-                        prediction_image=prediction_mask
-                    )
-                    if params.training_params.verbose >= 1:
-                        fig.savefig(os.path.join(params.training_params.output_dir_result, f'epochs_{epoch}_{i}.png'))
+        # todo: Подумать нужен ли такой функционал
+        # if params.training_params.verbose >= 1:
+        #     for i in range(targets.shape[0]):
+        #         if i < NUM_IMAGES_VISUALIZE:
+        #             input_image, target_image, prediction_image = convert_to_images(inputs[i],
+        #                                                                             targets[i],
+        #                                                                             predictions[i],
+        #                                                                             info_classes.get_colors())
+        #
+        #             fig = visualize(
+        #                 original_image=input_image,
+        #                 target_image=target_image,
+        #                 prediction_image=prediction_image
+        #             )
+        #             if params.training_params.verbose >= 1:
+        #                 fig.savefig(os.path.join(params.training_params.output_dir_result, f'epochs_{epoch}_{i}.png'))
 
-                    # fig, ax = plt.subplots(1, 3, figsize=(15, 10), sharex=False, sharey=False)
-                    # ax[0].imshow(input_image)
-                    # ax[0].set_title('Input Image')
-                    #
-                    # ax[1].imshow(target_mask, cmap='gray')
-                    # ax[1].set_title('Target Mask')
-                    #
-                    # ax[2].imshow(prediction_mask, cmap='gray')
-                    # ax[2].set_title('Predicted Mask')
-                    #
-                    # fig.savefig(os.path.join('./test_img', f'epochs__{i}.png'))
+    end_time_evaluate_epoch = time.time()
+    time_evaluate = end_time_evaluate_epoch - start_time_evaluate_epoch
+    val_loss = val_loss / num_batches
 
-    return val_loss
+    result = {'epoch': epoch, 'val_loss': val_loss, 'mean_accuracy': metric.calculated_metrics['mean_accuracy'],
+              'overall_accuracy': metric.calculated_metrics['overall_accuracy'],
+              'mean_iou': metric.calculated_metrics['mean_iou'],
+              'time': time_evaluate}
+
+    logger.add_scalar("Validate/Loss", val_loss / num_batches, epoch)
+    logger.add_scalar("Validate/Mean Accuracy", metric.calculated_metrics['mean_accuracy'], epoch)
+    logger.add_scalar("Validate/Overall Accuracy", metric.calculated_metrics['overall_accuracy'], epoch)
+    logger.add_scalar("Validate/Mean IoU", metric.calculated_metrics['mean_iou'], epoch)
+
+    accuracy_by_classes = {k: v for k, v in
+                           zip(info_classes.get_classes(), metric.calculated_metrics['per_category_accuracy'])}
+    iou_by_classes = {k: v for k, v in
+                      zip(info_classes.get_classes(), metric.calculated_metrics['per_category_iou'])}
+
+    logger.info('----=== Accuracy per classes ===---')
+    print_metrics(accuracy_by_classes, logger)
+
+    logger.info('----===   IoU per classes  ===---')
+    print_metrics(iou_by_classes, logger)
+    logger.add_scalars("Validate/Accuracy by classes", accuracy_by_classes, epoch)
+    logger.add_scalars("Validate/IoU by classes", iou_by_classes, epoch)
+
+    return result
 
 
-# def convert_grayscale_to_rgb(gray_image, grayscale2rgb):
-# Не актуально
-#     bw_gray_image = np.array(gray_image)
-#
-#     rgb_image = np.zeros_like(gray_image, dtype=np.uint8)
-#     for label, color in grayscale2rgb.items():
-#         mask = np.all(bw_gray_image == label, axis=-1)
-#         rgb_image[mask] = color
+def print_metrics(metrics, logger):
+    for k, v in metrics.items():
+        logger.info(f'\t\t {k}: {v}')
+
 
 def visualize(**images):
     """
@@ -232,16 +362,22 @@ def train_loop(model,
                val_loader,
                criterion,
                optimizer,
-               metrics,
-               label_colors,
+               metric_train,
+               metric_evaluate,
+               info_classes,
                params,
-               device='cpu'):
+               logger,
+               device='cpu',
+               ):
     '''Цикл для обучения модели'''
     min_val_loss = 1e6
     decrease = 0
+
+    start_time_training = time.time()
     for epoch in range(params.training_params.num_train_epochs):
         model.train()
         train_loss = 0
+        start_time_training_epoch = time.time()
         for inputs, targets in train_loader:
             inputs, targets = inputs.to(device), targets.to(device)
 
@@ -254,41 +390,86 @@ def train_loop(model,
 
             optimizer.step()
 
-        val_loss = evaluate_loop(model, val_loader,
-                                 criterion, metrics,
-                                 label_colors, params,
-                                 epoch=epoch,
-                                 device=device)
+            predictions = torch.argmax(outputs, dim=1)
+            converted_target_batch = batch_reverse_one_hot(targets.detach().cpu().numpy())
 
+            # Подсчет метрик
+            metric_train.compute_metrics_smp([predictions.detach().cpu().numpy(), converted_target_batch])
+
+        end_time_training_epoch = time.time()
         train_loss /= len(train_loader)
-        val_loss /= len(val_loader)
 
-        logger.info(f"Epoch {epoch + 1}/{params.training_params.num_train_epochs}, Loss: {train_loss}")
+        logger.info(f' ----=== Epoch: {epoch} ===--- ')
 
-        if min_val_loss > val_loss:
-            logger.info(f' Loss Decreasing.. {min_val_loss:.3f} >> {val_loss:.3f}')
-            min_val_loss = val_loss
+        # Вывод метрик обучения
+        logger.add_scalar("Train/Loss", train_loss, epoch)
+        logger.add_scalar("Train/Mean Accuracy", metric_train.calculated_metrics['mean_accuracy'], epoch)
+        logger.add_scalar("Train/Overall Accuracy", metric_train.calculated_metrics['overall_accuracy'], epoch)
+        logger.add_scalar("Train/Mean IoU", metric_train.calculated_metrics['mean_iou'], epoch)
+        accuracy_by_classes = {k: v for k, v in
+                               zip(info_classes.get_classes(),
+                                   metric_train.calculated_metrics['per_category_accuracy'])}
+        iou_by_classes = {k: v for k, v in
+                          zip(info_classes.get_classes(), metric_train.calculated_metrics['per_category_iou'])}
+
+        logger.info('----=== Accuracy per classes ===---')
+        print_metrics(accuracy_by_classes, logger)
+
+        logger.info('----===   IoU per classes  ===---')
+        print_metrics(iou_by_classes, logger)
+
+        logger.add_scalars("Train/Accuracy by classes", accuracy_by_classes, epoch)
+        logger.add_scalars("Train/IoU by classes", iou_by_classes, epoch)
+
+        # Оценка модели
+        result_evaluate = evaluate_epoch(model, val_loader,
+                                         criterion, metric_evaluate,
+                                         info_classes, params,
+                                         epoch=epoch,
+                                         logger=logger,
+                                         device=device)
+
+        logger.info(f"\tTrain Loss: {train_loss}; Time: {(end_time_training_epoch - start_time_training_epoch):.4f}")
+        logger.info(f"\tEvaluate loss: {result_evaluate['val_loss']}; Time: {result_evaluate['time']}")
+
+        if min_val_loss > result_evaluate['val_loss']:
+            logger.info(f' Loss Decreasing.. {min_val_loss:.3f} >> {result_evaluate["val_loss"]:.3f}')
+            min_val_loss = result_evaluate['val_loss']
             decrease += 1
             if decrease % 5 == 0:
-                path_to_save_checkpoint = os.path.join(params.training_params.save_to_checkpoint,
+                model_folder = os.path.join(params.training_params.save_to_checkpoint,
+                                            f"epoch_{epoch}_{result_evaluate['val_loss']:.3f}")
+                os.makedirs(model_folder, exist_ok=True)
+
+                path_to_save_checkpoint = os.path.join(model_folder,
                                                        f"checkpoint_{params.model.encoder}.pth")
+
                 logger.info(f" Save checkpoint to: {path_to_save_checkpoint}")
                 torch.save(model, path_to_save_checkpoint)
+
+    end_time_training = time.time()
+
+    logger.info(f'Общее время обучения модели: {(end_time_training - start_time_training):.4f}')
 
 
 # todoyes: Написать функцию визуализации картинок
 # todoyes: Написать загрузку модели
-# todo: Сделать метрики массивом
-# todo: Написать декодирование меток
+# todoyes: Сделать метрики массивом
+# todoyes: Написать декодирование меток
 # todoyes: Внедрить конфиг
-# todo: Добавить логер
-# todo: Построить в логере графики по классам
+# todoyes: Добавить логер
+# todoyes: Построить в логере графики по классам
 # todo: Расскидать код по файликам
 # todo: Найти как замораживать веса
 
 
 @hydra.main(version_base=None, config_path='../configs', config_name='train_config_smp')
 def train_pipeline(params):
+    logger = Logger(model_name=params.model.encoder, module_name=__name__, data_name='example')
+
+    # Сохраняем модель в папку запуска обучения нейронной сети
+    params.training_params.save_to_checkpoint = os.path.join(logger.log_dir, 'checkpoints')
+
     # todo: Сделать описание параметров
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if params.training_params.verbose > 0:
@@ -302,16 +483,20 @@ def train_pipeline(params):
         f'Каталог: {params.training_params.save_to_checkpoint}')
     os.makedirs(params.training_params.save_to_checkpoint, exist_ok=True)
 
-    with open(params.dataset.path_to_info_classes, "r") as read_file:
-        label2id = json.load(read_file)
-        id2label = {v: k for k, v in label2id.items()}
-        num_labels = len(label2id)
+    # with open(params.dataset.path_to_info_classes, "r") as read_file:
+    #     label2id = json.load(read_file)
+    #     id2label = {v: k for k, v in label2id.items()}
+    #     num_labels = len(label2id)
 
-    with open(params.dataset.path_to_decode_classes2rgb, "r") as read_file:
-        classes2id = json.load(read_file)
-        label_colors = [v for v in classes2id.values()]
+    # Загрузка информации о классах датасета
+    info_classes = InfoClasses()
+    info_classes.load_json(params.dataset.path_to_decode_classes2rgb)
 
-    params.dataset.num_labels = num_labels
+    # with open(params.dataset.path_to_decode_classes2rgb, "r") as read_file:
+    #     classes2id = json.load(read_file)
+    #     label_colors = [v for v in classes2id.values()]
+
+    params.dataset.num_labels = info_classes.get_num_labels()
 
     # label_colors = range(0, 255, 43)  # Индекс цвета для каждого класса
     # ignore_index = params.dataset.ignore_index  # Игнорируемый индекс, т.е индекс фона
@@ -320,20 +505,24 @@ def train_pipeline(params):
     # num_workers = 4
     # params = Params()
 
-    logger.info(f'---------------==== Параметры обучения ====---------------')
-    logger.info(f"\t\tКоличество классов: {num_labels}")
+    logger.info(f'---------------==== Параметры  ====---------------')
+    logger.info(f"\tМодель: ")
+    logger.info(f"\t\tEncoder модель: {params.model.encoder}")
+    logger.info(f"\t\tПредобученные веса модели: {params.model.encoder_weights}")
+    logger.info(f"\t\tПуть до загружаемых весов: {params.model.path_to_model_weight}")
+
+    logger.info(f"\tПараметры обучения: ")
+    logger.info(f"\t\tTrain Batch size: {params.training_params.train_batch_size}")
+    logger.info(f"\t\tEvaluate Batch size: {params.training_params.eval_batch_size}")
+    logger.info(f"\t\tLr: {params.training_params.lr}")
+    logger.info(f"\t\tКоличество эпох: {params.training_params.num_train_epochs}")
     logger.info(f"\t\tDevice: {device}")
 
-    # Замените на свои параметры
-    model = Unet(params.model.encoder, encoder_weights=params.model.encoder_weights, classes=num_labels)
+    logger.info(f"\tДатасет: ")
+    logger.info(f"\t\tКоличество классов: {params.dataset.num_labels}")
+    logger.info(f"\t\tПуть до датасета: {params.dataset.path_to_data}")
+    logger.info(f"\t\tПуть до файла с информацией о классах: {params.dataset.path_to_info_classes}")
 
-    # Загрузка модели
-    if os.path.exists(params.model.path_to_model_weight):
-        logger.info(f"Загрузка весов модели: {params.model.path_to_model_weight}")
-        model = torch.load(params.model.path_to_model_weight)
-        logger.info("Веса модели успещно загружены!")
-    else:
-        logger.info('Файл весов не указан или не найден. Модель инициализирована случайными весами!')
 
     # Замените на свой датасет и пути к данным
     transform = transforms.Compose([
@@ -343,10 +532,10 @@ def train_pipeline(params):
         # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
-    train_dataset = AerialSegmentationDataset(root=params.dataset.path_to_data, num_classes=num_labels,
+    train_dataset = AerialSegmentationDataset(root=params.dataset.path_to_data, num_classes=params.dataset.num_labels,
                                               split="train",
                                               transform=transform)
-    val_dataset = AerialSegmentationDataset(root=params.dataset.path_to_data, num_classes=num_labels,
+    val_dataset = AerialSegmentationDataset(root=params.dataset.path_to_data, num_classes=params.dataset.num_labels,
                                             split="val",
                                             transform=transform)
 
@@ -355,20 +544,40 @@ def train_pipeline(params):
     val_loader = DataLoader(val_dataset, batch_size=params.training_params.eval_batch_size, shuffle=True,
                             num_workers=params.training_params.num_workers_data_loader)
 
+    logger.info(f"\t\tРазмер обучающего датасета: {len(train_loader)*params.training_params.train_batch_size}")
+    logger.info(f"\t\tРазмер тестового датасета: {len(val_loader)*params.training_params.eval_batch_size}")
+
+    # Замените на свои параметры
+    model = Unet(params.model.encoder, encoder_weights=params.model.encoder_weights, classes=params.dataset.num_labels)
+
+    # Загрузка модели
+    if os.path.exists(params.model.path_to_model_weight):
+        logger.info(f"Загрузка весов модели: {params.model.path_to_model_weight}")
+        model = torch.load(params.model.path_to_model_weight)
+        logger.info("Веса модели успещно загружены!")
+    else:
+        logger.info('Файл весов не указан или не найден. Модель инициализирована случайными весами!')
+
     model.to(device)
 
     # Замените на свою функцию потерь и оптимизатор
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=params.training_params.lr)
 
-    metric = evaluate.load("mean_iou")
+    metric_iou = evaluate.load("mean_iou")
+    metric_train = SegmentationMetrics([metric_iou], num_labels=params.dataset.num_labels,
+                                       ignore_index=params.dataset.ignore_index)
+    metric_evaluate = SegmentationMetrics([metric_iou], num_labels=params.dataset.num_labels,
+                                          ignore_index=params.dataset.ignore_index)
 
     train_loop(model, train_loader, val_loader,
                criterion=criterion,
                optimizer=optimizer,
-               metrics=metric,
-               label_colors=label_colors,
+               metric_train=metric_train,
+               metric_evaluate=metric_evaluate,
+               info_classes=info_classes,
                params=params,
+               logger=logger,
                device=device
                )
 
