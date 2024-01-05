@@ -11,14 +11,14 @@ PATH_TO_DATASET = 'D:\\diploma_project\\datasets\\Dubai\\rgb_masks'
 
 def convert_to_bw_with_class_colors(input_path, output_path, label_colors):
     # Открываем цветное изображение
-    rgb_img = Image.open(input_path)
+    rgb_img = Image.open(input_path).convert('RGB')
     # rgb_array = np.array(rgb_img)
 
     # Преобразуем в черно-белое изображение
     bw_img = rgb_img.convert('L')
     # Создаем массив NumPy из черно-белого изображения
     bw_array = np.zeros((rgb_img.size[1], rgb_img.size[0]), dtype=np.uint8)
-    bw_array2 = np.array(bw_img)
+    # bw_array2 = np.array(bw_img)
     # Создаем массив NumPy из цветного изображения
     rgb_array = np.array(rgb_img)
     # tt_unique = np.unique(rgb_array.reshape(-1, rgb_array.shape[2]), axis=0)
@@ -76,7 +76,7 @@ def create_json():
 
 if __name__ == "__main__":
     create_json()
-    exit(0)
+    # exit(0)
 
     with open('D:\\diploma_project\\datasets\\Dubai\\grayscale2rgb.json', 'r') as f:
         class2rgb = json.load(f)
