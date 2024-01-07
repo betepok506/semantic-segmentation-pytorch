@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
-
+import albumentations as album
 from typing import List, Dict, Tuple, Union
 from natsort import natsorted
 from datasets import Dataset
@@ -66,13 +66,35 @@ from src.utils.utils import one_hot_encode
 #             return img
 
 
+def to_tensor(x, **kwargs):
+    return x.transpose(2, 0, 1).astype('float32')
+
+
+def get_preprocessing(preprocessing_fn=None):
+    """Construct preprocessing transform
+    Args:
+        preprocessing_fn (callable): data normalization function
+            (can be specific for each pretrained neural network)
+    Return:
+        transform: albumentations.Compose
+    """
+    _transform = []
+    if preprocessing_fn:
+        _transform.append(album.Lambda(image=preprocessing_fn))
+    _transform.append(album.Lambda(image=to_tensor, mask=to_tensor))
+
+    return album.Compose(_transform)
+
+
 class AerialSegmentationDataset(torch.utils.data.Dataset):
-    def __init__(self, root, split: str, num_classes, transform=None):
+    def __init__(self, root, split: str, class_rgb_values, transform=None, preprocessing=None):
         # super().__init__()
         self.root = root
         self.type_split = split
-        self.num_classes = num_classes
+        self.class_rgb_values = class_rgb_values
+        self.num_classes = len(class_rgb_values)
         self.transform = transform
+        self.preprocessing = preprocessing
         self.image_dir = os.path.join(root, "images", str(self.type_split))
         self.mask_dir = os.path.join(root, "masks", str(self.type_split))
 
@@ -86,25 +108,35 @@ class AerialSegmentationDataset(torch.utils.data.Dataset):
         img_path = os.path.join(self.image_dir, self.images[idx])
         mask_path = os.path.join(self.mask_dir, self.masks[idx])
 
-        image = Image.open(img_path).convert("RGB")
+        # image = Image.open(img_path).convert("RGB")
+        image = cv.cvtColor(cv.imread(img_path), cv.COLOR_BGR2RGB)
+        mask = cv.cvtColor(cv.imread(mask_path), cv.COLOR_BGR2RGB)
         # image = cv.imread(img_path, cv.IMREAD_COLOR)
         # mask = Image.open(mask_path)
-        mask = cv.imread(mask_path, cv.IMREAD_GRAYSCALE)
+        # mask = cv.imread(mask_path, cv.IMREAD_GRAYSCALE)
         # mask = cv.imread(mask_path, cv.IMREAD_UNCHANGED)
 
-        if self.transform:
-            image = self.transform(image)
+        if self.transform is not None:
+            # image = self.transform(image)
             # mask = self.transform(mask)
-            mask = one_hot_encode(mask, range(self.num_classes)).astype('float')
-            image_tensor = torch.from_numpy(mask.transpose((2, 0, 1))).float()
+            mask = one_hot_encode(mask, self.class_rgb_values).astype('float')
+            # image_tensor = torch.from_numpy(mask.transpose((2, 0, 1))).float()
             # image_pil = Image.fromarray(mask.astype('uint8'))
-            mask = self.transform(image_tensor)
+            # mask = self.transform(image_tensor)
+            transformed = self.transform(image=image, mask=mask)
 
-        image = np.array(image, dtype=np.float32)
-        image = np.transpose(image, (2, 0, 1))
+            image = transformed['image']
+            mask = transformed['mask']
 
-        image = torch.from_numpy(image)
-        image = image.float() / 255
+        if self.preprocessing:
+            sample = self.preprocessing(image=image, mask=mask)
+            image, mask = sample['image'], sample['mask']
+
+        # image = np.array(image, dtype=np.float32)
+        # image = np.transpose(image, (2, 0, 1))
+        #
+        # image = torch.from_numpy(image)
+        # image = image.float() / 255
         return image, mask
 
 

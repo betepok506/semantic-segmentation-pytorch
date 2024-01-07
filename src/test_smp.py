@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import os
 import random
 from src.evaluate.metrics import compute_metrics_smp
-from src.data.dataset import InfoClasses, AerialSegmentationDataset #, InfoClasses
+from src.data.dataset import InfoClasses, AerialSegmentationDataset, get_preprocessing  # , InfoClasses, ge
 from src.models.engine import train_loop, get_criterion, get_optimizer
 from src.utils.utils import batch_reverse_one_hot, colour_code_segmentation, convert_to_images
 from src.evaluate.metrics import SegmentationMetrics
@@ -28,9 +28,10 @@ import json
 import time
 from src.utils.tensorboard_logger import get_logger
 
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
 # logger = get_logger(__name__, logging.INFO, None)
 from src.utils.tensorboard_logger import Logger
-
 
 
 # todoyes: Написать функцию визуализации картинок
@@ -126,30 +127,49 @@ def train_pipeline(params):
     logger.info(f"\t\tПуть до файла с информацией о классах: {params.dataset.path_to_info_classes}")
 
     # Замените на свой датасет и пути к данным
-    transform = transforms.Compose([
-        # transforms.ToPILImage(),
-        transforms.Resize((512, 512), antialias=True),
-        # transforms.ToTensor(),
-        # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    # transform = transforms.Compose([
+    #     # transforms.ToPILImage(),
+    #     transforms.Resize((512, 512), antialias=True),
+    #     # transforms.ToTensor(),
+    #     # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    # ])
+
+    transform = A.Compose([
+        # A.RandomCrop(width=256, height=256),  # Рандомный кроп
+        A.CenterCrop(width=256, height=256),  # Рандомный кроп
+        # A.HorizontalFlip(p=0.5),  # Горизонтальное отражение с вероятностью 0.5
+        # A.VerticalFlip(p=0.5),  # Вертикальное отражение с вероятностью 0.5
+
+        # A.Rotate(limit=30, p=0.5),  # Вращение на случайный угол до 30 градусов с вероятностью 0.5
+        # A.Normalize(),  # Нормализация значений пикселей изображения
+        # ToTensorV2()  # Преобразование изображения в формат тензора PyTorch
     ])
 
-    train_dataset = AerialSegmentationDataset(root=params.dataset.path_to_data, num_classes=params.dataset.num_labels,
+    train_dataset = AerialSegmentationDataset(root=params.dataset.path_to_data,
+                                              class_rgb_values=info_classes.get_colors(),
                                               split="train",
-                                              transform=transform)
-    val_dataset = AerialSegmentationDataset(root=params.dataset.path_to_data, num_classes=params.dataset.num_labels,
-                                            split="val",
-                                            transform=transform)
+                                              transform=transform,
+                                              preprocessing=get_preprocessing())
+    val_dataset = AerialSegmentationDataset(root=params.dataset.path_to_data,
+                                            class_rgb_values=info_classes.get_colors(),
+                                            split="valid",
+                                            transform=transform,
+                                            preprocessing=get_preprocessing())
 
     train_loader = DataLoader(train_dataset, batch_size=params.training_params.train_batch_size, shuffle=True,
                               num_workers=params.training_params.num_workers_data_loader)
     val_loader = DataLoader(val_dataset, batch_size=params.training_params.eval_batch_size, shuffle=True,
                             num_workers=params.training_params.num_workers_data_loader)
 
+
     logger.info(f"\t\tРазмер обучающего датасета: {len(train_dataset)}")
     logger.info(f"\t\tРазмер тестового датасета: {len(val_dataset)}")
 
     # Замените на свои параметры
-    model = Unet(params.model.encoder, encoder_weights=params.model.encoder_weights, classes=params.dataset.num_labels)
+    model = Unet(params.model.encoder,
+                 encoder_weights=params.model.encoder_weights,
+                 classes=params.dataset.num_labels,
+                 activation='softmax2d')
 
     # Загрузка модели
     if os.path.exists(params.model.path_to_model_weight):

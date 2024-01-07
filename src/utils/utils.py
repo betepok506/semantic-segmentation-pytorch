@@ -2,6 +2,28 @@ import numpy as np
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
 
+
+# def one_hot_encode(label, label_values):
+#     """
+#     Convert a segmentation image label array to one-hot format
+#     by replacing each pixel value with a vector of length num_classes
+#     # Arguments
+#         label: The 2D array segmentation image label
+#         label_values
+#
+#     # Returns
+#         A 2D array with the same width and hieght as the input, but
+#         with a depth size of num_classes
+#     """
+#     semantic_map = []
+#     for colour in label_values:
+#         class_map = (label == colour)
+#         semantic_map.append(class_map)
+#     semantic_map = np.stack(semantic_map, axis=-1)
+#
+#     return semantic_map
+
+
 def one_hot_encode(label, label_values):
     """
     Convert a segmentation image label array to one-hot format
@@ -16,7 +38,8 @@ def one_hot_encode(label, label_values):
     """
     semantic_map = []
     for colour in label_values:
-        class_map = (label == colour)
+        equality = np.equal(label, colour)
+        class_map = np.all(equality, axis=-1)
         semantic_map.append(class_map)
     semantic_map = np.stack(semantic_map, axis=-1)
 
@@ -76,6 +99,7 @@ def convert_to_images(input_image, target_image, predict_image, label_colors):
     converted_prediction_image = colour_code_segmentation(prediction_numpy, label_colors)
 
     return converted_input_image, converted_target_image, converted_prediction_image
+
 
 def print_metrics(metrics, logger):
     for k, v in metrics.items():

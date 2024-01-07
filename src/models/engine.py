@@ -1,7 +1,8 @@
+import random
 import time
 import torch
 from segmentation_models_pytorch.losses import DiceLoss, FocalLoss
-from src.utils.utils import batch_reverse_one_hot, colour_code_segmentation, convert_to_images, print_metrics
+from src.utils.utils import batch_reverse_one_hot, colour_code_segmentation, convert_to_images, print_metrics, visualize
 import numpy as np
 import json
 import os
@@ -29,61 +30,70 @@ def evaluate_epoch(model,
 
     model.eval()
     start_time_evaluate_epoch = time.time()
-    for idx, (inputs, targets) in enumerate(val_loader):
-        inputs, targets = inputs.to(device), targets.to(device)
+    with torch.no_grad():
+        for idx, (inputs, targets) in enumerate(val_loader):
+            inputs, targets = inputs.to(device), targets.to(device)
 
-        # Получение предсказаний
-        outputs = model(inputs)
-        loss = criterion(outputs, targets)
-        loss.backward()
-        val_loss += loss.item()
+            # Получение предсказаний
+            outputs = model(inputs)
+            loss = criterion(outputs, targets)
+            # loss.backward()
+            val_loss += loss.item()
 
-        predictions = torch.argmax(outputs, dim=1)
-        converted_target_batch = batch_reverse_one_hot(targets.detach().cpu().numpy())
+            predictions = torch.argmax(outputs, dim=1)
+            converted_target_batch = batch_reverse_one_hot(targets.detach().cpu().numpy())
 
-        # Подсчет метрик
-        metric.compute_metrics_smp([predictions.detach().cpu().numpy(), converted_target_batch])
+            # Подсчет метрик
+            metric.compute_metrics_smp([predictions.detach().cpu().numpy(), converted_target_batch])
 
-        # Отображение примера сегментации в логере
-        if idx in random_indices:
-            disp_images = []
-            for idx_img in range(targets.shape[0]):
-                input_image, target_image, prediction_image = convert_to_images(inputs[idx_img],
-                                                                                targets[idx_img],
-                                                                                predictions[idx_img],
-                                                                                info_classes.get_colors())
-                disp_images.append(input_image)
-                disp_images.append(target_image)
-                disp_images.append(prediction_image)
+            # Отображение примера сегментации в логере
+            if idx in random_indices:
+                disp_images = []
+                for idx_img in range(targets.shape[0]):
+                    input_image, target_image, prediction_image = convert_to_images(inputs[idx_img],
+                                                                                    targets[idx_img],
+                                                                                    predictions[idx_img],
+                                                                                    info_classes.get_colors())
+                    disp_images.append(input_image)
+                    disp_images.append(target_image)
+                    disp_images.append(prediction_image)
+                    # fig = visualize(
+                    #     original_image=input_image,
+                    #     target_image=target_image,
+                    #     prediction_image=prediction_image
+                    # )
+                    # fig.savefig(os.path.join(
+                    #     'D:\\projects_andrey\\new_repo_segmentations\\semantic-segmentation-pytorch\\check_image',
+                    #     f'epochs_{epoch}_{str(random.randint(1, 900))}.png'))
 
-                if len(disp_images) // 3 >= NUM_IMAGES_VISUALIZE:
-                    break
+                    if len(disp_images) // 3 >= NUM_IMAGES_VISUALIZE:
+                        break
 
-            images = np.stack(disp_images, axis=0)
-            # Меняем каналы в формат B C H W
-            images = np.transpose(images, (0, 3, 1, 2))
-            images = torch.Tensor(images)
-            # Добавляем картинки в логер
-            logger.add_image(images, epoch, idx, len(val_loader),
-                             nrows=3,  # По 3 изображения в строке
-                             normalize=True)
+                images = np.stack(disp_images, axis=0)
+                # Меняем каналы в формат B C H W
+                images = np.transpose(images, (0, 3, 1, 2))
+                images = torch.Tensor(images)
+                # Добавляем картинки в логер
+                logger.add_image(images, epoch, idx, len(val_loader),
+                                 nrows=3,  # По 3 изображения в строке
+                                 normalize=True)
 
-        # todo: Подумать нужен ли такой функционал
-        # if params.training_params.verbose >= 1:
-        #     for i in range(targets.shape[0]):
-        #         if i < NUM_IMAGES_VISUALIZE:
-        #             input_image, target_image, prediction_image = convert_to_images(inputs[i],
-        #                                                                             targets[i],
-        #                                                                             predictions[i],
-        #                                                                             info_classes.get_colors())
-        #
-        #             fig = visualize(
-        #                 original_image=input_image,
-        #                 target_image=target_image,
-        #                 prediction_image=prediction_image
-        #             )
-        #             if params.training_params.verbose >= 1:
-        #                 fig.savefig(os.path.join(params.training_params.output_dir_result, f'epochs_{epoch}_{i}.png'))
+            # todo: Подумать нужен ли такой функционал
+            # if params.training_params.verbose >= 1:
+            #     for i in range(targets.shape[0]):
+            #         if i < NUM_IMAGES_VISUALIZE:
+            #             input_image, target_image, prediction_image = convert_to_images(inputs[i],
+            #                                                                             targets[i],
+            #                                                                             predictions[i],
+            #                                                                             info_classes.get_colors())
+            #
+            #             fig = visualize(
+            #                 original_image=input_image,
+            #                 target_image=target_image,
+            #                 prediction_image=prediction_image
+            #             )
+            #             if params.training_params.verbose >= 1:
+            #                 fig.savefig(os.path.join(params.training_params.output_dir_result, f'epochs_{epoch}_{i}.png'))
 
     end_time_evaluate_epoch = time.time()
     time_evaluate = end_time_evaluate_epoch - start_time_evaluate_epoch
