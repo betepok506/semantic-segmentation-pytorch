@@ -6,6 +6,9 @@ from src.utils.utils import batch_reverse_one_hot, colour_code_segmentation, con
 import numpy as np
 import json
 import os
+import cv2 as cv
+import albumentations as albu
+from segmentation_models_pytorch import DeepLabV3, Unet, FPN, UnetPlusPlus, Linknet, PSPNet, MAnet, PAN, DeepLabV3Plus
 
 
 def evaluate_epoch(model,
@@ -57,14 +60,6 @@ def evaluate_epoch(model,
                     disp_images.append(input_image)
                     disp_images.append(target_image)
                     disp_images.append(prediction_image)
-                    # fig = visualize(
-                    #     original_image=input_image,
-                    #     target_image=target_image,
-                    #     prediction_image=prediction_image
-                    # )
-                    # fig.savefig(os.path.join(
-                    #     'D:\\projects_andrey\\new_repo_segmentations\\semantic-segmentation-pytorch\\check_image',
-                    #     f'epochs_{epoch}_{str(random.randint(1, 900))}.png'))
 
                     if len(disp_images) // 3 >= NUM_IMAGES_VISUALIZE:
                         break
@@ -78,23 +73,6 @@ def evaluate_epoch(model,
                                  nrows=3,  # По 3 изображения в строке
                                  normalize=True)
 
-            # todo: Подумать нужен ли такой функционал
-            # if params.training_params.verbose >= 1:
-            #     for i in range(targets.shape[0]):
-            #         if i < NUM_IMAGES_VISUALIZE:
-            #             input_image, target_image, prediction_image = convert_to_images(inputs[i],
-            #                                                                             targets[i],
-            #                                                                             predictions[i],
-            #                                                                             info_classes.get_colors())
-            #
-            #             fig = visualize(
-            #                 original_image=input_image,
-            #                 target_image=target_image,
-            #                 prediction_image=prediction_image
-            #             )
-            #             if params.training_params.verbose >= 1:
-            #                 fig.savefig(os.path.join(params.training_params.output_dir_result, f'epochs_{epoch}_{i}.png'))
-
     end_time_evaluate_epoch = time.time()
     time_evaluate = end_time_evaluate_epoch - start_time_evaluate_epoch
     val_loss = val_loss / num_batches
@@ -103,13 +81,6 @@ def evaluate_epoch(model,
     result['epoch'] = epoch
     result['val_loss'] = val_loss
     result['time'] = time_evaluate
-
-    # result = {'epoch': epoch,
-    #           'val_loss': val_loss,
-    #           'mean_accuracy': metric.calculated_metrics['mean_accuracy'],
-    #           'overall_accuracy': metric.calculated_metrics['overall_accuracy'],
-    #           'mean_iou': metric.calculated_metrics['mean_iou'],
-    #           'time': time_evaluate}
 
     logger.add_scalar("Validate/Loss", val_loss / num_batches, epoch)
     logger.add_scalar("Validate/Mean Accuracy", metric.calculated_metrics['mean_accuracy'], epoch)
@@ -137,6 +108,7 @@ def train_loop(model,
                val_loader,
                criterion,
                optimizer,
+               scheduler,
                metric_train,
                metric_evaluate,
                info_classes,
@@ -235,6 +207,11 @@ def train_loop(model,
                 logger.info(f" Save checkpoint to: {path_to_save_checkpoint}")
                 torch.save(model, path_to_save_checkpoint)
 
+        # Очистка метрик, подсчитанных за эпоху
+        metric_train.clear()
+        metric_evaluate.clear()
+        scheduler.step()
+
     end_time_training = time.time()
 
     logger.info(f'Общее время обучения модели: {(end_time_training - start_time_training):.4f}')
@@ -274,6 +251,12 @@ class TypeOptimizer:
     ADAMW = "AdamW"
 
 
+def get_scheduler(optimizer, params):
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        optimizer, T_0=1, T_mult=2, eta_min=5e-5,
+    )
+    return scheduler
+
 def get_optimizer(model_parameters, params):
     '''
     Фунция для определения оптимизатора из переданных параметров конфигурации
@@ -290,3 +273,121 @@ def get_optimizer(model_parameters, params):
         raise NotImplementedError("Данный оптимизатор не определен!")
 
     return optimizer
+
+
+def get_model(params):
+    '''
+    Функция для определения модели из переданных параметров конфигурации
+
+    :param params:
+    :return:
+    '''
+    if params.model.name.lower() == 'unet':
+        model = Unet(params.model.encoder,
+                     encoder_weights=params.model.encoder_weights,
+                     classes=params.dataset.num_labels,
+                     activation=params.model.activation)
+    elif params.model.name.lower() == 'fpn':
+        model = FPN(params.model.encoder,
+                    encoder_weights=params.model.encoder_weights,
+                    classes=params.dataset.num_labels,
+                    activation=params.model.activation)
+    elif params.model.name.lower() == 'deeplabv3':
+        model = DeepLabV3(params.model.encoder,
+                          encoder_weights=params.model.encoder_weights,
+                          classes=params.dataset.num_labels,
+                          activation=params.model.activation)
+    elif params.model.name.lower() == 'deeplabv3plus':
+        model = DeepLabV3Plus(params.model.encoder,
+                              encoder_weights=params.model.encoder_weights,
+                              classes=params.dataset.num_labels,
+                              activation=params.model.activation)
+    elif params.model.name.lower() == 'unetplusplus':
+        model = UnetPlusPlus(params.model.encoder,
+                             encoder_weights=params.model.encoder_weights,
+                             classes=params.dataset.num_labels,
+                             activation=params.model.activation)
+    elif params.model.name.lower() == 'linknet':
+        model = Linknet(params.model.encoder,
+                        encoder_weights=params.model.encoder_weights,
+                        classes=params.dataset.num_labels,
+                        activation=params.model.activation)
+    elif params.model.name.lower() == 'pspnet':
+        model = PSPNet(params.model.encoder,
+                       encoder_weights=params.model.encoder_weights,
+                       classes=params.dataset.num_labels,
+                       activation=params.model.activation)
+    elif params.model.name.lower() == 'pan':
+        model = PAN(params.model.encoder,
+                    encoder_weights=params.model.encoder_weights,
+                    classes=params.dataset.num_labels,
+                    activation=params.model.activation)
+    elif params.model.name.lower() == 'manet':
+        model = MAnet(params.model.encoder,
+                      encoder_weights=params.model.encoder_weights,
+                      classes=params.dataset.num_labels,
+                      activation=params.model.activation)
+    else:
+        raise NotImplementedError("Данная модель не определена!")
+
+    return model
+
+
+def get_training_augmentation(crop_height=256, crop_width=256,
+                              resize_height=None, resize_width=None):
+    if resize_height is None:
+        resize_height = crop_height
+    if resize_width is None:
+        resize_width = crop_width
+
+    train_transform = [
+        albu.PadIfNeeded(min_height=crop_height, min_width=crop_width, border_mode=cv.BORDER_CONSTANT, value=[0, 0, 0],
+                         always_apply=True),
+        albu.RandomCrop(height=crop_height, width=crop_width, always_apply=True),
+        albu.OneOf(
+            [
+                albu.HorizontalFlip(p=0.5),
+                albu.VerticalFlip(p=0.5)
+            ],
+            p=0.9,
+        ),
+        # albu.HorizontalFlip(p=0.5),
+        #
+        # albu.ShiftScaleRotate(scale_limit=0.5, rotate_limit=0, shift_limit=0.1, p=1, border_mode=0),
+        #
+        # # albu.PadIfNeeded(min_height=320, min_width=320, always_apply=True, border_mode=0),
+        #
+        #
+        # albu.IAAAdditiveGaussianNoise(p=0.2),
+        # albu.IAAPerspective(p=0.5),
+        #
+        # albu.OneOf(
+        #     [
+        #         albu.CLAHE(p=1),
+        #         albu.RandomBrightness(p=1),
+        #         albu.RandomGamma(p=1),
+        #     ],
+        #     p=0.9,
+        # ),
+        #
+        # albu.OneOf(
+        #     [
+        #         albu.IAASharpen(p=1),
+        #         albu.Blur(blur_limit=3, p=1),
+        #         albu.MotionBlur(blur_limit=3, p=1),
+        #     ],
+        #     p=0.9,
+        # ),
+        #
+        # albu.OneOf(
+        #     [
+        #         albu.RandomContrast(p=1),
+        #         albu.HueSaturationValue(p=1),
+        #     ],
+        #     p=0.9,
+        # ),
+        albu.Resize(height=resize_height, width=resize_width)
+    ]
+
+    transform = albu.Compose(train_transform)
+    return transform

@@ -1,35 +1,37 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torchvision.transforms as transforms
+# import torch.nn as nn
+# import torch.nn.functional as F
+# import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
-import segmentation_models_pytorch as smp
-from segmentation_models_pytorch.losses import DiceLoss
-from segmentation_models_pytorch import DeepLabV3, Unet
+# import segmentation_models_pytorch as smp
+# from segmentation_models_pytorch.losses import DiceLoss
+# from segmentation_models_pytorch import DeepLabV3, Unet
 # from torchvision.datasets import Cityscapes  # Используем Cityscapes в качестве примера, замените на свой датасет
-from torch.utils.data import Dataset
-from pathlib import Path
-from natsort import natsorted
-from PIL import Image
-import matplotlib.pyplot as plt
+# from torch.utils.data import Dataset
+# from pathlib import Path
+# from natsort import natsorted
+# from PIL import Image
+# import matplotlib.pyplot as plt
 import os
-import random
-from src.evaluate.metrics import compute_metrics_smp
+# import random
+# from src.evaluate.metrics import compute_metrics_smp
 from src.data.dataset import InfoClasses, AerialSegmentationDataset, get_preprocessing  # , InfoClasses, ge
-from src.models.engine import train_loop, get_criterion, get_optimizer
-from src.utils.utils import batch_reverse_one_hot, colour_code_segmentation, convert_to_images
+from src.models.engine import train_loop, get_criterion, get_optimizer, get_training_augmentation, get_model, \
+    get_scheduler
+# from src.utils.utils import batch_reverse_one_hot, colour_code_segmentation, convert_to_images
 from src.evaluate.metrics import SegmentationMetrics
-import evaluate
-import numpy as np
-import cv2 as cv
-import hydra
-import logging
-import json
-import time
-from src.utils.tensorboard_logger import get_logger
 
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
+import evaluate
+# import numpy as np
+# import cv2 as cv
+import hydra
+# import logging
+# import json
+# import time
+# from src.utils.tensorboard_logger import get_logger
+#
+# import albumentations as A
+# from albumentations.pytorch import ToTensorV2
 # logger = get_logger(__name__, logging.INFO, None)
 from src.utils.tensorboard_logger import Logger
 
@@ -86,27 +88,11 @@ def train_pipeline(params):
         f'Каталог: {params.training_params.save_to_checkpoint}')
     os.makedirs(params.training_params.save_to_checkpoint, exist_ok=True)
 
-    # with open(params.dataset.path_to_info_classes, "r") as read_file:
-    #     label2id = json.load(read_file)
-    #     id2label = {v: k for k, v in label2id.items()}
-    #     num_labels = len(label2id)
-
     # Загрузка информации о классах датасета
     info_classes = InfoClasses()
     info_classes.load_json(params.dataset.path_to_decode_classes2rgb)
 
-    # with open(params.dataset.path_to_decode_classes2rgb, "r") as read_file:
-    #     classes2id = json.load(read_file)
-    #     label_colors = [v for v in classes2id.values()]
-
     params.dataset.num_labels = info_classes.get_num_labels()
-
-    # label_colors = range(0, 255, 43)  # Индекс цвета для каждого класса
-    # ignore_index = params.dataset.ignore_index  # Игнорируемый индекс, т.е индекс фона
-    # batch_size = 2
-    # lr = 0.001
-    # num_workers = 4
-    # params = Params()
 
     logger.info(f'---------------==== Параметры  ====---------------')
     logger.info(f"\tМодель: ")
@@ -123,6 +109,7 @@ def train_pipeline(params):
 
     logger.info(f"\tДатасет: ")
     logger.info(f"\t\tКоличество классов: {params.dataset.num_labels}")
+    logger.info(f"\t\tКласс, игнорируемый при подсчете метрик: {params.dataset.ignore_index}")
     logger.info(f"\t\tПуть до датасета: {params.dataset.path_to_data}")
     logger.info(f"\t\tПуть до файла с информацией о классах: {params.dataset.path_to_info_classes}")
 
@@ -134,16 +121,18 @@ def train_pipeline(params):
     #     # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     # ])
 
-    transform = A.Compose([
-        # A.RandomCrop(width=256, height=256),  # Рандомный кроп
-        A.CenterCrop(width=256, height=256),  # Рандомный кроп
-        # A.HorizontalFlip(p=0.5),  # Горизонтальное отражение с вероятностью 0.5
-        # A.VerticalFlip(p=0.5),  # Вертикальное отражение с вероятностью 0.5
+    # transform = A.Compose([
+    #     # A.RandomCrop(width=256, height=256),  # Рандомный кроп
+    #     A.CenterCrop(width=256, height=256),  # Рандомный кроп
+    #     # A.HorizontalFlip(p=0.5),  # Горизонтальное отражение с вероятностью 0.5
+    #     # A.VerticalFlip(p=0.5),  # Вертикальное отражение с вероятностью 0.5
+    #
+    #     # A.Rotate(limit=30, p=0.5),  # Вращение на случайный угол до 30 градусов с вероятностью 0.5
+    #     # A.Normalize(),  # Нормализация значений пикселей изображения
+    #     # ToTensorV2()  # Преобразование изображения в формат тензора PyTorch
+    # ])
 
-        # A.Rotate(limit=30, p=0.5),  # Вращение на случайный угол до 30 градусов с вероятностью 0.5
-        # A.Normalize(),  # Нормализация значений пикселей изображения
-        # ToTensorV2()  # Преобразование изображения в формат тензора PyTorch
-    ])
+    transform = get_training_augmentation(crop_height=256, crop_width=256)
 
     train_dataset = AerialSegmentationDataset(root=params.dataset.path_to_data,
                                               class_rgb_values=info_classes.get_colors(),
@@ -161,15 +150,10 @@ def train_pipeline(params):
     val_loader = DataLoader(val_dataset, batch_size=params.training_params.eval_batch_size, shuffle=True,
                             num_workers=params.training_params.num_workers_data_loader)
 
-
     logger.info(f"\t\tРазмер обучающего датасета: {len(train_dataset)}")
     logger.info(f"\t\tРазмер тестового датасета: {len(val_dataset)}")
 
-    # Замените на свои параметры
-    model = Unet(params.model.encoder,
-                 encoder_weights=params.model.encoder_weights,
-                 classes=params.dataset.num_labels,
-                 activation='softmax2d')
+    model = get_model(params)
 
     # Загрузка модели
     if os.path.exists(params.model.path_to_model_weight):
@@ -184,18 +168,19 @@ def train_pipeline(params):
 
     criterion = get_criterion(params.training_params.criterion)
 
-    # optimizer = torch.optim.Adam(model.parameters(), lr=params.training_params.lr)
     optimizer = get_optimizer(model.parameters(), params)
+    scheduler = get_scheduler(optimizer, params)
 
     metric_iou = evaluate.load("mean_iou")
     metric_train = SegmentationMetrics([metric_iou], num_labels=params.dataset.num_labels,
                                        ignore_index=params.dataset.ignore_index)
-    metric_evaluate = SegmentationMetrics([metric_iou], num_labels=params.dataset.num_labels,
+    metric_evaluate = SegmentationMetrics([evaluate.load("mean_iou")], num_labels=params.dataset.num_labels,
                                           ignore_index=params.dataset.ignore_index)
 
     train_loop(model, train_loader, val_loader,
                criterion=criterion,
                optimizer=optimizer,
+               scheduler=scheduler,
                metric_train=metric_train,
                metric_evaluate=metric_evaluate,
                info_classes=info_classes,

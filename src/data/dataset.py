@@ -111,6 +111,15 @@ class AerialSegmentationDataset(torch.utils.data.Dataset):
         # image = Image.open(img_path).convert("RGB")
         image = cv.cvtColor(cv.imread(img_path), cv.COLOR_BGR2RGB)
         mask = cv.cvtColor(cv.imread(mask_path), cv.COLOR_BGR2RGB)
+
+        # cv.imshow(f'tt_{idx}', image)
+        # cv.waitKey(0)
+        # cv.destroyAllWindows()
+
+        # image = cv.imread(img_path)
+        # mask = cv.imread(mask_path)
+
+
         # image = cv.imread(img_path, cv.IMREAD_COLOR)
         # mask = Image.open(mask_path)
         # mask = cv.imread(mask_path, cv.IMREAD_GRAYSCALE)

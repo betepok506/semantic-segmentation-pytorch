@@ -29,21 +29,21 @@ def compute_metrics(eval_pred, metric, num_labels, ignore_index):
         return metrics
 
 
-def compute_metrics_smp(eval_pred, metric, num_labels, ignore_index):
-    with torch.no_grad():
-        pred_labels, labels = eval_pred
-        metrics = metric.compute(
-            predictions=pred_labels,
-            references=labels,
-            num_labels=num_labels,
-            ignore_index=ignore_index,
-            reduce_labels=False,
-        )
-        for key, value in metrics.items():
-            if type(value) is np.ndarray:
-                metrics[key] = value.tolist()
-
-        return metrics
+# def compute_metrics_smp(eval_pred, metric, num_labels, ignore_index):
+#     with torch.no_grad():
+#         pred_labels, labels = eval_pred
+#         metrics = metric.compute(
+#             predictions=pred_labels,
+#             references=labels,
+#             num_labels=num_labels,
+#             ignore_index=ignore_index,
+#             reduce_labels=False,
+#         )
+#         for key, value in metrics.items():
+#             if type(value) is np.ndarray:
+#                 metrics[key] = value.tolist()
+#
+#         return metrics
 
 
 class SegmentationMetrics:
@@ -77,6 +77,9 @@ class SegmentationMetrics:
             self.calculated_metrics = result_metrics
         else:
             self.calculated_metrics = self.__update_metrics(self.calculated_metrics, result_metrics)
+
+    def clear(self):
+        self.calculated_metrics = None
 
     @staticmethod
     def __update_metrics(metrics, updating_metrics):

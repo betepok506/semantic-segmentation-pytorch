@@ -90,13 +90,18 @@ def batch_reverse_one_hot(batch_images):
 
 def convert_to_images(input_image, target_image, predict_image, label_colors):
     '''Преобразование изображений из tensor в формат для отображения'''
-    converted_input_image = transforms.ToPILImage()(input_image.detach().cpu())
+    ttt = input_image.detach().cpu().numpy()
+    converted_input_image = ttt.transpose((1,2,0)).astype(np.uint8)
+    # converted_input_image = transforms.ToPILImage()(input_image.detach().cpu())
 
     target_numpy = target_image.detach().cpu().numpy()
     converted_target_image = colour_code_segmentation(reverse_one_hot(target_numpy), label_colors)
 
-    prediction_numpy = predict_image.detach().cpu().numpy()
-    converted_prediction_image = colour_code_segmentation(prediction_numpy, label_colors)
+    if predict_image is not None:
+        prediction_numpy = predict_image.detach().cpu().numpy()
+        converted_prediction_image = colour_code_segmentation(prediction_numpy, label_colors)
+    else:
+        converted_prediction_image = None
 
     return converted_input_image, converted_target_image, converted_prediction_image
 
@@ -114,5 +119,5 @@ def visualize(**images):
     for idx, (name, image) in enumerate(images.items()):
         ax[idx].set_title(name.replace('_', ' ').title(), fontsize=20)
         ax[idx].imshow(image)
-
+    plt.close(1)
     return fig
