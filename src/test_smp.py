@@ -111,7 +111,7 @@ def train_pipeline(params):
     logger.info(f"\t\tКоличество классов: {params.dataset.num_labels}")
     logger.info(f"\t\tКласс, игнорируемый при подсчете метрик: {params.dataset.ignore_index}")
     logger.info(f"\t\tПуть до датасета: {params.dataset.path_to_data}")
-    logger.info(f"\t\tПуть до файла с информацией о классах: {params.dataset.path_to_info_classes}")
+    logger.info(f"\t\tПуть до файла с цветами классов: {params.dataset.path_to_decode_classes2rgb}")
 
     # Замените на свой датасет и пути к данным
     # transform = transforms.Compose([
