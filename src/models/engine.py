@@ -94,9 +94,13 @@ def evaluate_epoch(model,
 
     logger.info('----=== Evaluate Accuracy per classes ===---')
     print_metrics(accuracy_by_classes, logger)
+    logger.info(f'\t Mean Accuracy: {metric.calculated_metrics["mean_accuracy"]}')
+    logger.info(f'\t Overall Accuracy: {metric.calculated_metrics["overall_accuracy"]}')
 
     logger.info('----===  Evaluate IoU per classes  ===---')
     print_metrics(iou_by_classes, logger)
+    logger.info(f'\t Mean IOU: {metric.calculated_metrics["mean_iou"]}')
+
     logger.add_scalars("Validate/Accuracy by classes", accuracy_by_classes, epoch)
     logger.add_scalars("Validate/IoU by classes", iou_by_classes, epoch)
 
@@ -161,9 +165,12 @@ def train_loop(model,
 
         logger.info('----=== Train Accuracy per classes ===---')
         print_metrics(accuracy_by_classes, logger)
+        logger.info(f'\t Mean Accuracy: {metric_train.calculated_metrics["mean_accuracy"]}')
+        logger.info(f'\t Overall Accuracy: {metric_train.calculated_metrics["overall_accuracy"]}')
 
         logger.info('----===  Train IoU per classes  ===---')
         print_metrics(iou_by_classes, logger)
+        logger.info(f'\t Mean IOU: {metric_train.calculated_metrics["mean_iou"]}')
 
         logger.add_scalars("Train/Accuracy by classes", accuracy_by_classes, epoch)
         logger.add_scalars("Train/IoU by classes", iou_by_classes, epoch)

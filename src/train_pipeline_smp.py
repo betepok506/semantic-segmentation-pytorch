@@ -94,6 +94,7 @@ def train_pipeline(params):
 
     params.dataset.num_labels = info_classes.get_num_labels()
 
+    logger.info(f'Комментарий: {params.comment}')
     logger.info(f'---------------==== Параметры  ====---------------')
     logger.info(f"\tМодель: ")
     logger.info(f"\t\tEncoder модель: {params.model.encoder}")
@@ -101,6 +102,11 @@ def train_pipeline(params):
     logger.info(f"\t\tПуть до загружаемых весов: {params.model.path_to_model_weight}")
 
     logger.info(f"\tПараметры обучения: ")
+    logger.info(f"\t\tCriterion: {params.training_params.criterion.name}")
+    logger.info(f"\t\tCriterion alpha: {params.training_params.criterion.alpha}")
+    logger.info(f"\t\tCriterion gamma: {params.training_params.criterion.gamma}")
+    logger.info(f"\t\tCriterion mode: {params.training_params.criterion.mode}")
+    logger.info(f"\t\tOptimizer: {params.training_params.optimizer.name}")
     logger.info(f"\t\tTrain Batch size: {params.training_params.train_batch_size}")
     logger.info(f"\t\tEvaluate Batch size: {params.training_params.eval_batch_size}")
     logger.info(f"\t\tLr: {params.training_params.lr}")
