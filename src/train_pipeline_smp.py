@@ -118,27 +118,13 @@ def train_pipeline(params):
     logger.info(f"\t\tКласс, игнорируемый при подсчете метрик: {params.dataset.ignore_index}")
     logger.info(f"\t\tПуть до датасета: {params.dataset.path_to_data}")
     logger.info(f"\t\tПуть до файла с цветами классов: {params.dataset.path_to_decode_classes2rgb}")
+    logger.info(f"\t\tПуть до файла с цветами классов: {params.dataset.path_to_decode_classes2rgb}")
 
-    # Замените на свой датасет и пути к данным
-    # transform = transforms.Compose([
-    #     # transforms.ToPILImage(),
-    #     transforms.Resize((512, 512), antialias=True),
-    #     # transforms.ToTensor(),
-    #     # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    # ])
-
-    # transform = A.Compose([
-    #     # A.RandomCrop(width=256, height=256),  # Рандомный кроп
-    #     A.CenterCrop(width=256, height=256),  # Рандомный кроп
-    #     # A.HorizontalFlip(p=0.5),  # Горизонтальное отражение с вероятностью 0.5
-    #     # A.VerticalFlip(p=0.5),  # Вертикальное отражение с вероятностью 0.5
-    #
-    #     # A.Rotate(limit=30, p=0.5),  # Вращение на случайный угол до 30 градусов с вероятностью 0.5
-    #     # A.Normalize(),  # Нормализация значений пикселей изображения
-    #     # ToTensorV2()  # Преобразование изображения в формат тензора PyTorch
-    # ])
-
-    transform = get_training_augmentation(crop_height=256, crop_width=256)
+    transform = get_training_augmentation(crop_height=params.training_params.image_crop[0],
+                                          crop_width=params.training_params.image_crop[1],
+                                          resize_height=params.training_params.image_size[0],
+                                          resize_width=params.training_params.image_size[1],
+                                          )
 
     train_dataset = AerialSegmentationDataset(root=params.dataset.path_to_data,
                                               class_rgb_values=info_classes.get_colors(),

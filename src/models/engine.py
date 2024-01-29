@@ -125,7 +125,7 @@ def train_loop(model,
     decrease = 0
 
     start_time_training = time.time()
-    for epoch in range(params.training_params.num_train_epochs):
+    for epoch in range(1, params.training_params.num_train_epochs+1):
         model.train()
         train_loss = 0
         start_time_training_epoch = time.time()
@@ -348,48 +348,13 @@ def get_training_augmentation(crop_height=256, crop_width=256,
         resize_width = crop_width
 
     train_transform = [
-        albu.PadIfNeeded(min_height=crop_height, min_width=crop_width, border_mode=cv.BORDER_CONSTANT, value=[0, 0, 0],
-                         always_apply=True),
+        # albu.PadIfNeeded(min_height=crop_height, min_width=crop_width, border_mode=cv.BORDER_CONSTANT, value=[0, 0, 0],
+        #                  always_apply=True),
         albu.RandomCrop(height=crop_height, width=crop_width, always_apply=True),
-        albu.OneOf(
-            [
-                albu.HorizontalFlip(p=0.5),
-                albu.VerticalFlip(p=0.5)
-            ],
-            p=0.9,
-        ),
-        # albu.HorizontalFlip(p=0.5),
-        #
-        # albu.ShiftScaleRotate(scale_limit=0.5, rotate_limit=0, shift_limit=0.1, p=1, border_mode=0),
-        #
-        # # albu.PadIfNeeded(min_height=320, min_width=320, always_apply=True, border_mode=0),
-        #
-        #
-        # albu.IAAAdditiveGaussianNoise(p=0.2),
-        # albu.IAAPerspective(p=0.5),
-        #
         # albu.OneOf(
         #     [
-        #         albu.CLAHE(p=1),
-        #         albu.RandomBrightness(p=1),
-        #         albu.RandomGamma(p=1),
-        #     ],
-        #     p=0.9,
-        # ),
-        #
-        # albu.OneOf(
-        #     [
-        #         albu.IAASharpen(p=1),
-        #         albu.Blur(blur_limit=3, p=1),
-        #         albu.MotionBlur(blur_limit=3, p=1),
-        #     ],
-        #     p=0.9,
-        # ),
-        #
-        # albu.OneOf(
-        #     [
-        #         albu.RandomContrast(p=1),
-        #         albu.HueSaturationValue(p=1),
+        #         albu.HorizontalFlip(p=0.5),
+        #         albu.VerticalFlip(p=0.5)
         #     ],
         #     p=0.9,
         # ),
