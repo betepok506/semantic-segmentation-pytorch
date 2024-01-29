@@ -1,5 +1,6 @@
+comment: ""
 model:
-  name: "pspnet"
+  name: "unet"
   encoder: "resnet34"
   encoder_weights: "imagenet"
   path_to_model_weight: ""
@@ -17,12 +18,12 @@ training_params:
   lr: 6e-5
   num_train_epochs: 100
   criterion:
-    name: 'dice_loss'
+    name: 'cross_entropy'
     alpha: 1
     gamma: 2
     mode: 'multilabel'
   optimizer:
-    name: 'Adam'
+    name: 'AdamW'
 #  output_dir: "testing_dir"
   train_batch_size: 16
   eval_batch_size: 16
