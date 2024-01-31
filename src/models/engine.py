@@ -348,16 +348,25 @@ def get_training_augmentation(crop_height=256, crop_width=256,
         resize_width = crop_width
 
     train_transform = [
-        # albu.PadIfNeeded(min_height=crop_height, min_width=crop_width, border_mode=cv.BORDER_CONSTANT, value=[0, 0, 0],
-        #                  always_apply=True),
+        albu.OneOf(
+            [
+                albu.HorizontalFlip(p=0.5),
+                albu.VerticalFlip(p=0.5),
+            ],
+            p=0.7,
+        ),
+        albu.Rotate(limit=(-89, 89), p=0.7),
+
+        albu.OneOf(
+            [
+                albu.GaussNoise(var_limit=(10.0, 25.0), p=0.7),
+            ],
+            p=.5,
+        ),
+
+        albu.PadIfNeeded(min_height=crop_height, min_width=crop_width, border_mode=cv.BORDER_CONSTANT, value=[0, 0, 0],
+                         always_apply=True),
         albu.RandomCrop(height=crop_height, width=crop_width, always_apply=True),
-        # albu.OneOf(
-        #     [
-        #         albu.HorizontalFlip(p=0.5),
-        #         albu.VerticalFlip(p=0.5)
-        #     ],
-        #     p=0.9,
-        # ),
         albu.Resize(height=resize_height, width=resize_width)
     ]
 
