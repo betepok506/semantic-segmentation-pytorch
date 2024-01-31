@@ -158,7 +158,7 @@ def train_pipeline(params):
     model.to(device)
     # preprocessing_fn = smp.encoders.get_preprocessing_fn(params.model.encoder, params.model.encoder_weights)
 
-    criterion = get_criterion(params.training_params.criterion)
+    criterion = get_criterion(params.training_params.criterion, train_loader, device)
 
     optimizer = get_optimizer(model.parameters(), params)
     scheduler = get_scheduler(optimizer, params)

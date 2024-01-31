@@ -3,6 +3,7 @@ import time
 import torch
 from segmentation_models_pytorch.losses import DiceLoss, FocalLoss
 from src.utils.utils import batch_reverse_one_hot, colour_code_segmentation, convert_to_images, print_metrics, visualize
+from src.data.dataset import counting_class_pixels
 import numpy as np
 import json
 import os
@@ -228,9 +229,10 @@ class TypeCriterion:
     DICE_LOSS = 'dice_loss'
     FOCAL_LOSS = 'focal_loss'
     CROSS_ENTROPY = 'cross_entropy'
+    WEIGHT_CROSS_ENTROPY = 'weight_cross_entropy'
 
 
-def get_criterion(params):
+def get_criterion(params, data_loader=None, device=None):
     '''
     Фунция для выбора функции потерь в зависимости от переданных параметров конфигурации
 
@@ -243,6 +245,13 @@ def get_criterion(params):
         criterion = DiceLoss(mode=params.mode)
     elif params.name == TypeCriterion.CROSS_ENTROPY:
         criterion = torch.nn.CrossEntropyLoss()
+    elif params.name == TypeCriterion.WEIGHT_CROSS_ENTROPY:
+        if data_loader is None:
+            raise "For this loss function, you must specify a data loader!"
+
+        weights_classes = counting_class_pixels(data_loader)
+        # weights_classes = weights_classes.to(device='gpu', dtype=torch.float32)
+        criterion = torch.nn.CrossEntropyLoss(weight=torch.from_numpy(weights_classes).to(device))
     elif params.name == TypeCriterion.FOCAL_LOSS:
         criterion = FocalLoss(mode=params.mode,
                               alpha=params.alpha,

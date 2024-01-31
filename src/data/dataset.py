@@ -222,3 +222,18 @@ def _create_segmentation_dataset(data_dir: str, config: ConfigurationDataset, na
         .cast_column("image", datasets.Image()) \
         .cast_column("annotation", datasets.Image())
     return dataset
+
+
+def counting_class_pixels(loader):
+    class_weight = None
+    for inputs, targets in loader:
+        if class_weight is None:
+            class_weight = np.zeros(targets.shape[1])
+
+        for idx in range(targets.shape[1]):
+            counts = np.count_nonzero(targets[:, idx].int(), axis=(0, 1, 2))
+            class_weight[idx] += counts
+
+    class_weight = np.asarray(class_weight.min() / class_weight)
+
+    return class_weight
