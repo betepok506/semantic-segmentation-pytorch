@@ -3,7 +3,7 @@ import time
 import torch
 from segmentation_models_pytorch.losses import DiceLoss, FocalLoss
 from src.utils.utils import batch_reverse_one_hot, colour_code_segmentation, convert_to_images, print_metrics, visualize
-from src.data.dataset import counting_class_pixels
+
 import numpy as np
 import json
 import os
@@ -124,9 +124,10 @@ def train_loop(model,
     '''Цикл для обучения модели'''
     min_val_loss = 1e6
     decrease = 0
-
+    # from torchmetrics import JaccardIndex, ConfusionMatrix
+    # jaccard_metric = JaccardIndex(task="multiclass", num_classes=6, average=None).to(device)
     start_time_training = time.time()
-    for epoch in range(1, params.training_params.num_train_epochs+1):
+    for epoch in range(1, params.training_params.num_train_epochs + 1):
         model.train()
         train_loss = 0
         start_time_training_epoch = time.time()
@@ -147,6 +148,11 @@ def train_loop(model,
 
             # Подсчет метрик
             metric_train.compute_metrics_smp([predictions.detach().cpu().numpy(), converted_target_batch])
+            # tt = predictions
+            # ttt = torch.from_numpy(converted_target_batch).to(device)
+            # jaccard_index = jaccard_metric(tt, ttt)
+            # iou_mean = torch.mean(jaccard_index)
+            # print(7)
 
         end_time_training_epoch = time.time()
         train_loss /= len(train_loader)
@@ -232,7 +238,7 @@ class TypeCriterion:
     WEIGHT_CROSS_ENTROPY = 'weight_cross_entropy'
 
 
-def get_criterion(params, ignore_index, data_loader=None, device=None):
+def get_criterion(params, weights_classes, device=None):
     '''
     Фунция для выбора функции потерь в зависимости от переданных параметров конфигурации
 
@@ -246,11 +252,7 @@ def get_criterion(params, ignore_index, data_loader=None, device=None):
     elif params.name == TypeCriterion.CROSS_ENTROPY:
         criterion = torch.nn.CrossEntropyLoss()
     elif params.name == TypeCriterion.WEIGHT_CROSS_ENTROPY:
-        if data_loader is None:
-            raise "For this loss function, you must specify a data loader!"
 
-        weights_classes = counting_class_pixels(data_loader, ignore_index)
-        # weights_classes = weights_classes.to(device='gpu', dtype=torch.float32)
         criterion = torch.nn.CrossEntropyLoss(weight=torch.from_numpy(weights_classes).to(device))
     elif params.name == TypeCriterion.FOCAL_LOSS:
         criterion = FocalLoss(mode=params.mode,
@@ -272,6 +274,7 @@ def get_scheduler(optimizer, params):
         optimizer, T_0=1, T_mult=2, eta_min=5e-5,
     )
     return scheduler
+
 
 def get_optimizer(model_parameters, params):
     '''
