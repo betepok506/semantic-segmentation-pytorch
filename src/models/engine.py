@@ -232,7 +232,7 @@ class TypeCriterion:
     WEIGHT_CROSS_ENTROPY = 'weight_cross_entropy'
 
 
-def get_criterion(params, data_loader=None, device=None):
+def get_criterion(params, ignore_index, data_loader=None, device=None):
     '''
     Фунция для выбора функции потерь в зависимости от переданных параметров конфигурации
 
@@ -249,7 +249,7 @@ def get_criterion(params, data_loader=None, device=None):
         if data_loader is None:
             raise "For this loss function, you must specify a data loader!"
 
-        weights_classes = counting_class_pixels(data_loader)
+        weights_classes = counting_class_pixels(data_loader, ignore_index)
         # weights_classes = weights_classes.to(device='gpu', dtype=torch.float32)
         criterion = torch.nn.CrossEntropyLoss(weight=torch.from_numpy(weights_classes).to(device))
     elif params.name == TypeCriterion.FOCAL_LOSS:

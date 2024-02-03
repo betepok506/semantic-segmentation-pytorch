@@ -158,8 +158,10 @@ def train_pipeline(params):
     model.to(device)
     # preprocessing_fn = smp.encoders.get_preprocessing_fn(params.model.encoder, params.model.encoder_weights)
 
-    criterion = get_criterion(params.training_params.criterion, train_loader, device)
+    criterion = get_criterion(params.training_params.criterion, params.dataset.ignore_index, train_loader, device)
 
+    weight_classes = criterion.weight
+    # Todo: Вывести веса для кадого класса в случае cross_entropy
     optimizer = get_optimizer(model.parameters(), params)
     scheduler = get_scheduler(optimizer, params)
 

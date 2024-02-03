@@ -224,8 +224,9 @@ def _create_segmentation_dataset(data_dir: str, config: ConfigurationDataset, na
     return dataset
 
 
-def counting_class_pixels(loader):
+def counting_class_pixels(loader, ignore_index):
     class_weight = None
+    ignore_index_ = ignore_index - 1
     for inputs, targets in loader:
         if class_weight is None:
             class_weight = np.zeros(targets.shape[1])
@@ -234,6 +235,10 @@ def counting_class_pixels(loader):
             counts = np.count_nonzero(targets[:, idx].int(), axis=(0, 1, 2))
             class_weight[idx] += counts
 
+    if ignore_index_ > class_weight.shape[0]:
+        ignore_index_ = class_weight.shape[0] - 1
+
+    class_weight[ignore_index_] = np.inf
     class_weight = np.asarray(class_weight.min() / class_weight)
 
     return class_weight
