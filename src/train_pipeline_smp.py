@@ -165,12 +165,15 @@ def train_pipeline(params):
 
     criterion = get_criterion(params.training_params.criterion, weights_classes, device)
 
-    # logger.info('\t Количество пикселей для каждого класса:')
-    # for ind, cls in enumerate(info_classes.get_classes()):
-    #     if ind + 1 == params.dataset.ignore_index:
-    #         logger.info(f'\t\t {cls} (Игнорируемый): {int(number_pixels_each_class[ind])}')
-    #     else:
-    #         logger.info(f'\t\t {cls}: {int(number_pixels_each_class[ind])}')
+    logger.info('\t Количество пикселей для каждого класса:')
+    sum_pixels_each_class = number_pixels_each_class.sum()
+    for ind, cls in enumerate(info_classes.get_classes()):
+        if ind + 1 == params.dataset.ignore_index:
+            logger.info(
+                f'\t\t {cls} (Игнорируемый): {int(number_pixels_each_class[ind]):<30} \t {(number_pixels_each_class[ind] / sum_pixels_each_class)*100 :>5.2f}%')
+        else:
+            logger.info(
+                f'\t\t {cls}: {int(number_pixels_each_class[ind]):<30} {(number_pixels_each_class[ind] / sum_pixels_each_class)*100:>5.2f}%')
 
     if params.training_params.criterion.name in ['weight_cross_entropy', 'cross_entropy']:
         logger.info('\t Веса классов:')
