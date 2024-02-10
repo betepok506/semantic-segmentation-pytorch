@@ -3,6 +3,7 @@ import time
 import torch
 from segmentation_models_pytorch.losses import DiceLoss, FocalLoss
 from src.utils.utils import batch_reverse_one_hot, colour_code_segmentation, convert_to_images, print_metrics, visualize
+
 import numpy as np
 import json
 import os
@@ -123,9 +124,10 @@ def train_loop(model,
     '''Цикл для обучения модели'''
     min_val_loss = 1e6
     decrease = 0
-
+    # from torchmetrics import JaccardIndex, ConfusionMatrix
+    # jaccard_metric = JaccardIndex(task="multiclass", num_classes=6, average=None).to(device)
     start_time_training = time.time()
-    for epoch in range(1, params.training_params.num_train_epochs+1):
+    for epoch in range(1, params.training_params.num_train_epochs + 1):
         model.train()
         train_loss = 0
         start_time_training_epoch = time.time()
@@ -146,6 +148,11 @@ def train_loop(model,
 
             # Подсчет метрик
             metric_train.compute_metrics_smp([predictions.detach().cpu().numpy(), converted_target_batch])
+            # tt = predictions
+            # ttt = torch.from_numpy(converted_target_batch).to(device)
+            # jaccard_index = jaccard_metric(tt, ttt)
+            # iou_mean = torch.mean(jaccard_index)
+            # print(7)
 
         end_time_training_epoch = time.time()
         train_loss /= len(train_loader)
@@ -228,9 +235,10 @@ class TypeCriterion:
     DICE_LOSS = 'dice_loss'
     FOCAL_LOSS = 'focal_loss'
     CROSS_ENTROPY = 'cross_entropy'
+    WEIGHT_CROSS_ENTROPY = 'weight_cross_entropy'
 
 
-def get_criterion(params):
+def get_criterion(params, weights_classes, device=None):
     '''
     Фунция для выбора функции потерь в зависимости от переданных параметров конфигурации
 
@@ -243,6 +251,9 @@ def get_criterion(params):
         criterion = DiceLoss(mode=params.mode)
     elif params.name == TypeCriterion.CROSS_ENTROPY:
         criterion = torch.nn.CrossEntropyLoss()
+    elif params.name == TypeCriterion.WEIGHT_CROSS_ENTROPY:
+
+        criterion = torch.nn.CrossEntropyLoss(weight=torch.from_numpy(weights_classes).to(device))
     elif params.name == TypeCriterion.FOCAL_LOSS:
         criterion = FocalLoss(mode=params.mode,
                               alpha=params.alpha,
@@ -263,6 +274,7 @@ def get_scheduler(optimizer, params):
         optimizer, T_0=1, T_mult=2, eta_min=5e-5,
     )
     return scheduler
+
 
 def get_optimizer(model_parameters, params):
     '''
@@ -348,16 +360,25 @@ def get_training_augmentation(crop_height=256, crop_width=256,
         resize_width = crop_width
 
     train_transform = [
-        # albu.PadIfNeeded(min_height=crop_height, min_width=crop_width, border_mode=cv.BORDER_CONSTANT, value=[0, 0, 0],
-        #                  always_apply=True),
+        albu.OneOf(
+            [
+                albu.HorizontalFlip(p=0.5),
+                albu.VerticalFlip(p=0.5),
+            ],
+            p=0.7,
+        ),
+        albu.Rotate(limit=(-89, 89), p=0.7),
+
+        albu.OneOf(
+            [
+                albu.GaussNoise(var_limit=(10.0, 25.0), p=0.7),
+            ],
+            p=.5,
+        ),
+
+        albu.PadIfNeeded(min_height=crop_height, min_width=crop_width, border_mode=cv.BORDER_CONSTANT, value=[0, 0, 0],
+                         always_apply=True),
         albu.RandomCrop(height=crop_height, width=crop_width, always_apply=True),
-        # albu.OneOf(
-        #     [
-        #         albu.HorizontalFlip(p=0.5),
-        #         albu.VerticalFlip(p=0.5)
-        #     ],
-        #     p=0.9,
-        # ),
         albu.Resize(height=resize_height, width=resize_width)
     ]
 

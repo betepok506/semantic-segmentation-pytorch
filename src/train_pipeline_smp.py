@@ -3,6 +3,7 @@ import torch
 # import torch.nn.functional as F
 # import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
+from src.data.dataset import counting_class_pixels
 # import segmentation_models_pytorch as smp
 # from segmentation_models_pytorch.losses import DiceLoss
 # from segmentation_models_pytorch import DeepLabV3, Unet
@@ -157,9 +158,33 @@ def train_pipeline(params):
 
     model.to(device)
     # preprocessing_fn = smp.encoders.get_preprocessing_fn(params.model.encoder, params.model.encoder_weights)
+    if params.training_params.criterion.name == 'weight_cross_entropy':
+        weights_classes, number_pixels_each_class = counting_class_pixels(train_loader, params.dataset.ignore_index)
+    else:
+        weights_classes = None
 
-    criterion = get_criterion(params.training_params.criterion)
+    criterion = get_criterion(params.training_params.criterion, weights_classes, device)
 
+    logger.info('\t Количество пикселей для каждого класса:')
+    sum_pixels_each_class = number_pixels_each_class.sum()
+    for ind, cls in enumerate(info_classes.get_classes()):
+        if ind + 1 == params.dataset.ignore_index:
+            logger.info(
+                f'\t\t {cls} (Игнорируемый): {int(number_pixels_each_class[ind]):<30} \t {(number_pixels_each_class[ind] / sum_pixels_each_class)*100 :>5.2f}%')
+        else:
+            logger.info(
+                f'\t\t {cls}: {int(number_pixels_each_class[ind]):<30} {(number_pixels_each_class[ind] / sum_pixels_each_class)*100:>5.2f}%')
+
+    if params.training_params.criterion.name in ['weight_cross_entropy', 'cross_entropy']:
+        logger.info('\t Веса классов:')
+        weight_classes = criterion.weight.cpu().numpy()
+        for ind, cls in enumerate(info_classes.get_classes()):
+            if ind + 1 == params.dataset.ignore_index:
+                logger.info(f'\t\t {cls} (Игнорируемый): {weight_classes[ind]}')
+            else:
+                logger.info(f'\t\t {cls}: {weight_classes[ind]}')
+
+    # Todo: Вывести веса для кадого класса в случае cross_entropy
     optimizer = get_optimizer(model.parameters(), params)
     scheduler = get_scheduler(optimizer, params)
 

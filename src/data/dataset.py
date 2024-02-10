@@ -222,3 +222,24 @@ def _create_segmentation_dataset(data_dir: str, config: ConfigurationDataset, na
         .cast_column("image", datasets.Image()) \
         .cast_column("annotation", datasets.Image())
     return dataset
+
+
+def counting_class_pixels(loader, ignore_index):
+    number_pixels_each_class = None
+    ignore_index_ = ignore_index - 1
+    for inputs, targets in loader:
+        if number_pixels_each_class is None:
+            number_pixels_each_class = np.zeros(targets.shape[1])
+
+        for idx in range(targets.shape[1]):
+            counts = np.count_nonzero(targets[:, idx].int(), axis=(0, 1, 2))
+            number_pixels_each_class[idx] += counts
+
+    if ignore_index_ > number_pixels_each_class.shape[0]:
+        ignore_index_ = number_pixels_each_class.shape[0] - 1
+
+    class_weight = number_pixels_each_class.copy()
+    class_weight[ignore_index_] = np.inf
+    class_weight = np.asarray(class_weight.min() / class_weight)
+
+    return class_weight, number_pixels_each_class
