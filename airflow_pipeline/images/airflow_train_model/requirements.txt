@@ -1,0 +1,4 @@
+marshmallow_dataclass
+pyyaml
+numpy
+pillow

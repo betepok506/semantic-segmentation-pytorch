@@ -7,5 +7,8 @@ from dataclasses import dataclass, field
 
 @dataclass()
 class ModelParams:
-    name_model_or_path: str
-    name_image_processor_or_path: str
+    name: str
+    encoder: str
+    encoder_weights: str
+    path_to_model_weight: str
+    activation: str

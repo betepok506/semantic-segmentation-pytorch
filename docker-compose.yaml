@@ -36,8 +36,9 @@ x-airflow-common:
     AIRFLOW__CORE__STORE_SERIALIZED_DAGS: True
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: True
     #    AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
-    AIRFLOW_VAR_LOCAL_DATA_DIR: ${LOCAL_DATA_DIR}
-    AIRFLOW_VAR_LOCAL_MLRUNS_DIR: ${LOCAL_MLRUNS_DIR}
+    AIRFLOW_VAR_LOCAL_RUNS_DIR: ${LOCAL_RUNS_DIR}
+    AIRFLOW_VAR_LOCAL_LEARNING_RESULT: ${LOCAL_LEARNING_RESULT}
+    AIRFLOW_VAR_LOCAL_CONFIGS_DIR: ${LOCAL_CONFIGS_DIR}
     AIRFLOW__SMTP__SMTP_HOST: smtp.mail.ru
     AIRFLOW__SMTP__SMTP_STARTTLS: True
     AIRFLOW__SMTP__SMTP_SSL: False
@@ -45,17 +46,18 @@ x-airflow-common:
     AIRFLOW__SMTP__SMTP_PASSWORD: ${PASSWORD}
     AIRFLOW__SMTP__SMTP_PORT: 465
     AIRFLOW__SMTP__SMTP_MAIL_FROM: rotanov07@mail.com
-
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     # WARNING: Use _PIP_ADDITIONAL_REQUIREMENTS option ONLY for a quick checks
     # for other purpose (development, test and especially production usage) build/extend Airflow image.
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
   volumes:
-    - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
+    - ${AIRFLOW_PROJ_DIR:-.}/airflow_pipeline/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
     - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
-    - ${AIRFLOW_PROJ_DIR:-.}/src:/opt/airflow/scr
+    - ${AIRFLOW_PROJ_DIR:-.}/src:/opt/airflow/src
+    - ${AIRFLOW_PROJ_DIR:-.}/configs:/opt/airflow/configs
+    - ${AIRFLOW_PROJ_DIR:-.}/learning_result:/opt/airflow/learning_result # Убрать,, если вытащить в докер getting_name_log_dir
 #    - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/airflow/data
     - /var/run/docker.sock:/var/run/docker.sock
   #  user: "${AIRFLOW_UID:-50000}:0" # Изменить права пользователя для доступа к сокету докера
@@ -144,6 +146,7 @@ services:
       start_period: 30s
     environment:
       <<: *airflow-common-env
+
       # Required to handle warm shutdown of the celery workers properly
       # See https://airflow.apache.org/docs/docker-stack/entrypoint.html#signal-propagation
       DUMB_INIT_SETSID: "0"
@@ -152,6 +155,7 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+
 
   airflow-triggerer:
     <<: *airflow-common
@@ -259,25 +263,44 @@ services:
       - -c
       - airflow
 
-#  preprocess-image:
-#    build:
-#      context: images/airflow-osgeo-gdal
-#    image: airflow-osgeo-gdal
-#    restart: "no"
-#
-#  api-search-images:
-#    build:
-#      context: images/airflow-copernicus-api
-#      dockerfile: search-images/Dockerfile
-#    image: airflow-copernicus-api/search-images
-#    restart: "no"
-#
-#  api-download-images:
-#    build:
-#      context: images/airflow-copernicus-api
-#      dockerfile: download-images/Dockerfile
-#    image: airflow-copernicus-api/download-images
-#    restart: "no"
+  train-model:
+    build:
+      context: .
+      dockerfile: airflow_pipeline/images/airflow_train_model/Dockerfile
+    image: airflow-train-model
+    restart: "no"
+    volumes:
+      - ./configs:/configs
+      - ./runs:/runs
+
+  extracting-logging:
+    build:
+      context: .
+      dockerfile: airflow_pipeline/images/airflow_extracting_logging/Dockerfile
+    image: airflow-extracting-logging
+    restart: 'no'
+
+  save-learning-result:
+    build:
+      context: .
+      dockerfile: airflow_pipeline/images/airflow_save_learning_result/Dockerfile
+    image: airflow-save-learning-result
+    restart: 'no'
+
+  visualization-graphs:
+    build:
+      context: .
+      dockerfile: airflow_pipeline/images/airflow_visualization_graphs/Dockerfile
+    image: airflow-visualization-graphs
+    restart: 'no'
+
+  analyze-result:
+    build:
+      context: .
+      dockerfile: airflow_pipeline/images/airflow_analyze_result/Dockerfile
+    image: airflow-analyze-result
+    restart: 'no'
+
 
 
 volumes:

@@ -1,17 +1,19 @@
 import os
 from airflow.models import Variable
 from datetime import timedelta
+from docker.types import Mount
 from airflow.utils.email import send_email_smtp
 # from airflow.api.common.experimental.pool import get_pool, create_pool
 # from airflow.exceptions import PoolNotFound
 # from airflow.models import BaseOperator
 # from airflow.utils.decorators import apply_defaults
 
-LOCAL_DATA_DIR = Variable.get('local_data_dir')
+LOCAL_RUNS_DIR = Variable.get('local_runs_dir')
+LOCAL_LEARNING_RESULT = Variable.get("local_learning_result")
+LOCAL_CONFIGS_DIR = Variable.get("local_configs_dir")
 # LOCAL_MLRUNS_DIR = Variable.get('local_mlruns_dir')
 NUM_PARALLEL_SENTINEL_DOWNLOADS = 4
 NUM_PARALLEL_SENTINEL_IMAGE_PROCESSING = 5
-
 
 def wait_for_file(file_name: str):
     return os.path.exists(file_name)

@@ -6,14 +6,30 @@ from dataclasses import dataclass, field
 
 
 @dataclass()
+class CriterionParams:
+    name: str
+    alpha: int
+    gamma: int
+    mode: str
+
+
+@dataclass()
+class OptimizerParams:
+    name: str
+
+
+@dataclass()
 class TrainingParams:
     lr: float
-    output_dir: str
+    num_train_epochs: int
+    criterion: CriterionParams
+    optimizer: OptimizerParams
+    image_size: list
+    image_crop: list
     train_batch_size: int
     eval_batch_size: int
-    save_total_limit: int
-    evaluation_strategy: str
-    save_strategy: str
-    eval_accumulation_steps: int
-    remove_unused_columns: bool
+    verbose: int
+    output_dir_result: str
+    save_to_checkpoint: str
+    num_workers_data_loader: int
     report_to: str

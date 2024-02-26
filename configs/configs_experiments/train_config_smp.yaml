@@ -1,0 +1,42 @@
+comment: "С gggggggggggggggggggggg"
+model:
+  name: "unet"
+  encoder: "resnet101"
+  encoder_weights: "imagenet"
+  path_to_model_weight: ""
+  activation: "softmax2d"
+#  path_to_model_weight: "./models/Unet/checkpoint_timm-efficientnet-b0.pth"
+
+dataset:
+  path_to_data: "D:\\projects_andrey\\datasets\\segmentations\\Dubai"
+#  path_to_info_classes: "D:\\diploma_project\\datasets\\Dubai\\classes2rgb.json"
+  path_to_decode_classes2rgb: "D:\\projects_andrey\\datasets\\segmentations\\Dubai\\classes2rgb.json"
+  ignore_index: 255
+  num_labels: 6
+
+training_params:
+  lr: 6e-7
+  num_train_epochs: 300
+  criterion:
+    name: 'cross_entropy'
+    alpha: 1
+    gamma: 2
+    mode: 'multilabel'
+  optimizer:
+    name: 'AdamW'
+#  output_dir: "testing_dir"
+  image_size: [256, 256]
+  image_crop: [256, 256]
+  train_batch_size: 16
+  eval_batch_size: 16
+  verbose: 0 # 0 - ничего не выводить, 1 сохранять изображения в папку output_dir_result
+  output_dir_result: "./result"
+  save_to_checkpoint: './models/checkpoints'
+  num_workers_data_loader: 4
+#  save_total_limit: 3
+#  evaluation_strategy: "epoch"
+#  save_strategy: "epoch"
+#  logging_steps: 1
+#  eval_accumulation_steps: 1
+#  remove_unused_columns: False
+  report_to: "tensorboard"

@@ -1,5 +1,8 @@
 venv
 .venv/
+learning_result/
+final_result/
+data_logging/
 models/
 !src/models
 outputs

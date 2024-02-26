@@ -14,7 +14,39 @@ pip install torch==1.13.1+cu116 torchvision==0.14.1+cu116 torchaudio==0.13.1 --e
 
 pip3 install torch==2.0.0 torchvision==0.15.1 torchaudio==2.0.1 --index-url https://download.pytorch.org/whl/cu118
 
+# Запуск
+
+Перед запуском контейнера airflow необходимо экспортировать переменные окружения из корневого каталога:
+
+Windows
+```commandline
+$env:LOCAL_RUNS_DIR="$(pwd)/runs"
+$env:LOCAL_LEARNING_RESULT="$(pwd)/airflow_outputs"
+$env:LOCAL_CONFIGS_DIR="$(pwd)/configs/configs_experiments"
+```
+
 ---
+
+Для сборки Docker контейнера воспользуйтесь следующей командой:
+```commandline
+docker-compose --env-file .env up --build
+```
+
+Запуск Docker
+```commandline
+docker-compose --env-file .env up
+```
+
+Для очистки контейнеров и volumes необходимо использовать следующую команду:
+```commandline
+docker-compose down --volumes 
+```
+
+Данные для авторизации на Airflow по умолчанию:
+```commandline
+login: airflow
+password: airflow
+```
 
 # Конфигурирование
 
