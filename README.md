@@ -21,8 +21,10 @@ pip3 install torch==2.0.0 torchvision==0.15.1 torchaudio==2.0.1 --index-url http
 Windows
 ```commandline
 $env:LOCAL_RUNS_DIR="$(pwd)/runs"
-$env:LOCAL_LEARNING_RESULT="$(pwd)/airflow_outputs"
+$env:LOCAL_LEARNING_RESULT="$(pwd)/learning_result"
+$env:LOCAL_FINAL_RESULT="$(pwd)/final_result"
 $env:LOCAL_CONFIGS_DIR="$(pwd)/configs/configs_experiments"
+$env:LOCAL_DATASETS_DIR="D:/diploma_project/datasets"
 ```
 
 ---

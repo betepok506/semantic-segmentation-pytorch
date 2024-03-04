@@ -2,3 +2,15 @@ marshmallow_dataclass
 pyyaml
 numpy
 pillow
+marshmallow_dataclass
+tensorboard
+segmentation_models_pytorch
+hydra-core
+albumentations
+opencv-python
+opencv-python-headless
+natsort
+datasets
+matplotlib
+tqdm
+evaluate

@@ -5,7 +5,7 @@ import argparse
 import sys
 sys.path.append("/")
 
-# from src.utils.extracting_logging_information import ExtractingLoggingInformation
+from src.utils.extracting_logging_information import ExtractingLoggingInformation
 
 # # Определите путь к каталогу с логами TensorBoard
 # log_dir = 'D:\\diploma_project\\semantic-segmentation-pytorch\\runs\\20231227_103420_resnet34_example\\tensorboard\\events.out.tfevents.1703662460.DESKTOP-TN74S6H.16616.0'
@@ -19,9 +19,9 @@ sys.path.append("/")
 def main(**kwargs) -> None:
     print(f"Path to log: {kwargs['path_to_log']}")
     print(f"Path to save: {kwargs['path_to_save']}")
-    # extracting_logging = ExtractingLoggingInformation(kwargs['path_to_log'])
-    # extracting_logging.parsing_logging_dir()
-    # extracting_logging.save_the_dir(kwargs['path_to_save'])
+    extracting_logging = ExtractingLoggingInformation(kwargs['path_to_log'])
+    extracting_logging.parsing_logging_dir()
+    extracting_logging.save_the_dir(kwargs['path_to_save'])
 
 
 if __name__ == "__main__":

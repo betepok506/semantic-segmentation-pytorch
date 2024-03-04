@@ -31,10 +31,6 @@ def main(**kwargs):
     # Считываем csv файл с результатами обучения моделей
     # Если файл не найде, создаем его
     path_to_output_file = os.path.join(output_dir, NAME_FILES_RESULTS_ANALYSIS)
-    # if not os.path.exists(path_to_output_file):
-    #     df_final_result = pd.DataFrame()
-    # # else:
-    # #     df_final_result = pd.read_csv(path_to_output_file)
 
     data_final = {
         'ind': [],
@@ -44,17 +40,17 @@ def main(**kwargs):
     df = pd.read_csv(path_to_file)
     df_columns = list(df.columns)
     # Групируем результаты обучения по столбцам параметров и берем уникальные значения каталогов запусков
-    grouped = df.groupby(df_columns[:-1], as_index=False)[NAME_COLUMN_METRICS].unique()
-    grouped.to_csv(os.path.join(output_dir, NAME_FILES_GROUPED_VALUES), index=True)
+    grouped = df.groupby(df_columns[:-2], as_index=False)
+    grouped_data = grouped.agg({NAME_COLUMN_CONFIGS: list, NAME_COLUMN_METRICS: list}).reset_index()
 
-    for ind, row in grouped.iterrows():
+    for ind, row in grouped_data.iterrows():
         cls_counting_metrics = AnalyzeExtractedDataLogging()
         for cur_dir in row[NAME_COLUMN_METRICS]:
             cls_counting_metrics.add_data('./' + cur_dir)
 
         # Усредняем результаты экспериментов и подсчитываем метрики
         cls_counting_metrics.counting_metrics()
-        name_config = os.path.basename(row[NAME_COLUMN_CONFIGS])
+        name_config = [os.path.basename(item) for item in row[NAME_COLUMN_CONFIGS]]
         extracted_values = cls_counting_metrics.extracting_metrics(LIST_SAVED_METRICS)
         data_final['ind'].append(ind)
         data_final[NAME_COLUMN_CONFIGS].append(name_config)
@@ -69,7 +65,6 @@ def main(**kwargs):
 
     # Сохраняем результат
     new_df = pd.DataFrame(data_final)
-    # df = pd.concat([df_final_result, new_df], ignore_index=True)
     new_df.to_csv(path_to_output_file, index=False)
 
 

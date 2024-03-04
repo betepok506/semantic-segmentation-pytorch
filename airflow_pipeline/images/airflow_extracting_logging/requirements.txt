@@ -1,2 +1,5 @@
-
+torchvision
+torch
+tensorboard
 pandas
+tensorflow

@@ -15,6 +15,11 @@ __pycache__/
 example_augmentation_work/
 logs/
 
+# Airflow
+plugins/
+logs/
+config/
+
 # C extensions
 *.so
 

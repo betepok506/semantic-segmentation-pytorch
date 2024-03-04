@@ -3,13 +3,15 @@ from airflow.models import Variable
 from datetime import timedelta
 from docker.types import Mount
 from airflow.utils.email import send_email_smtp
-# from airflow.api.common.experimental.pool import get_pool, create_pool
-# from airflow.exceptions import PoolNotFound
-# from airflow.models import BaseOperator
-# from airflow.utils.decorators import apply_defaults
+from airflow.api.common.experimental.pool import get_pool, create_pool
+from airflow.exceptions import PoolNotFound
+from airflow.models import BaseOperator
+from airflow.utils.decorators import apply_defaults
 
 LOCAL_RUNS_DIR = Variable.get('local_runs_dir')
 LOCAL_LEARNING_RESULT = Variable.get("local_learning_result")
+LOCAL_FINAL_RESULT = Variable.get("local_final_result")
+LOCAL_DATASETS_DIR = Variable.get("local_datasets_dir")
 LOCAL_CONFIGS_DIR = Variable.get("local_configs_dir")
 # LOCAL_MLRUNS_DIR = Variable.get('local_mlruns_dir')
 NUM_PARALLEL_SENTINEL_DOWNLOADS = 4
@@ -33,30 +35,30 @@ default_args = {
 }
 
 
-# class CreatePoolOperator(BaseOperator):
-#     # its pool blue, get it?
-#     ui_color = '#b8e9ee'
-#
-#     @apply_defaults
-#     def __init__(
-#             self,
-#             name,
-#             slots,
-#             description='',
-#             *args,
-#             **kwargs):
-#         super(CreatePoolOperator, self).__init__(*args, **kwargs)
-#         self.description = description
-#         self.slots = slots
-#         self.name = name
-#
-#     def execute(self, context):
-#         try:
-#             pool = get_pool(name=self.name)
-#             if pool:
-#                 self.log.info(f'Pool exists: {pool}')
-#                 return
-#         except PoolNotFound:
-#             # create the pool
-#             pool = create_pool(name=self.name, slots=self.slots, description=self.description)
-#             self.log.info(f'Created pool: {pool}')
+class CreatePoolOperator(BaseOperator):
+    # its pool blue, get it?
+    ui_color = '#b8e9ee'
+
+    @apply_defaults
+    def __init__(
+            self,
+            name,
+            slots,
+            description='',
+            *args,
+            **kwargs):
+        super(CreatePoolOperator, self).__init__(*args, **kwargs)
+        self.description = description
+        self.slots = slots
+        self.name = name
+
+    def execute(self, context):
+        try:
+            pool = get_pool(name=self.name)
+            if pool:
+                self.log.info(f'Pool exists: {pool}')
+                return
+        except PoolNotFound:
+            # create the pool
+            pool = create_pool(name=self.name, slots=self.slots, description=self.description)
+            self.log.info(f'Created pool: {pool}')

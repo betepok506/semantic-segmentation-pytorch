@@ -38,7 +38,9 @@ x-airflow-common:
     #    AIRFLOW__CORE__FERNET_KEY: ${FERNET_KEY}
     AIRFLOW_VAR_LOCAL_RUNS_DIR: ${LOCAL_RUNS_DIR}
     AIRFLOW_VAR_LOCAL_LEARNING_RESULT: ${LOCAL_LEARNING_RESULT}
+    AIRFLOW_VAR_LOCAL_FINAL_RESULT: ${LOCAL_FINAL_RESULT}
     AIRFLOW_VAR_LOCAL_CONFIGS_DIR: ${LOCAL_CONFIGS_DIR}
+    AIRFLOW_VAR_LOCAL_DATASETS_DIR: ${LOCAL_DATASETS_DIR}
     AIRFLOW__SMTP__SMTP_HOST: smtp.mail.ru
     AIRFLOW__SMTP__SMTP_STARTTLS: True
     AIRFLOW__SMTP__SMTP_SSL: False
@@ -57,6 +59,7 @@ x-airflow-common:
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
     - ${AIRFLOW_PROJ_DIR:-.}/src:/opt/airflow/src
     - ${AIRFLOW_PROJ_DIR:-.}/configs:/opt/airflow/configs
+    - ${AIRFLOW_PROJ_DIR:-.}/datasets:/opt/airflow/datasets
     - ${AIRFLOW_PROJ_DIR:-.}/learning_result:/opt/airflow/learning_result # Убрать,, если вытащить в докер getting_name_log_dir
 #    - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/airflow/data
     - /var/run/docker.sock:/var/run/docker.sock
@@ -267,11 +270,20 @@ services:
     build:
       context: .
       dockerfile: airflow_pipeline/images/airflow_train_model/Dockerfile
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     image: airflow-train-model
     restart: "no"
-    volumes:
-      - ./configs:/configs
-      - ./runs:/runs
+#    volumes:
+#      - ./configs:/configs
+#      - ./runs:/runs
+#      - ./configs:/configs
+#        - ./runs:/runs
 
   extracting-logging:
     build:

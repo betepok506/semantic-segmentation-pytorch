@@ -13,6 +13,7 @@ print(os.environ.get('PYTHONPATH'))
 
 from datetime import datetime
 from airflow import DAG
+import docker
 from airflow.operators.python_operator import PythonOperator
 from airflow.operators.python import get_current_context
 from airflow.providers.docker.operators.docker import DockerOperator
@@ -21,7 +22,12 @@ from airflow.decorators import task, task_group
 # from src.test_2 import model_predict
 from docker.types import Mount
 import os
-from utils import LOCAL_RUNS_DIR, LOCAL_LEARNING_RESULT, LOCAL_CONFIGS_DIR
+from utils import LOCAL_RUNS_DIR, \
+    LOCAL_LEARNING_RESULT, \
+    LOCAL_CONFIGS_DIR, \
+    LOCAL_FINAL_RESULT, \
+    LOCAL_DATASETS_DIR, \
+    CreatePoolOperator
 
 import logging
 
@@ -36,29 +42,10 @@ def read_config_files(config_folder_path, **kwargs):
     return [os.path.join('configs', name_config) for name_config in config_files]
 
 
-# @task
-# def train_model(config_file):
-#     # Загрузка конфигурации из файла YAML
-#     # with open(config_file, "r") as yaml_file:
-#     #     config = yaml.safe_load(yaml_file)
-#     #
-#     # # Ваш код для запуска обучения модели с использованием параметров из конфигурации
-#     # print(f"Training model with config: {config}")
-#     # logger.info(f"Training model with config: {config}")
-#     return config
-
-
-# @task
-# def analyze_results(name_configs, **kwargs):
-#     # Ваш код для анализа результатов
-#     print("Analyzing results...")
-#     return name_configs
-
-
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
-    'start_date': datetime(2024, 2, 11),
+    'start_date': datetime(2024, 3, 3),
     'email': ['airflow@example.com'],
     'email_on_failure': False,
     'email_on_retry': False,
@@ -72,38 +59,47 @@ with DAG(
         'training_model',
         default_args=default_args,
         schedule_interval='@daily',
-        start_date=datetime(2024, 2, 17),
+        start_date=datetime(2024, 3, 2),
         render_template_as_native_obj=True,
         params={
             'dir_save_learning_result': './learning_result'
         }
 ) as dag:
+    @task
+    def initializing_parameters():
+        context = get_current_context()
+        CreatePoolOperator(
+            slots=1,
+            name='pool_of_training_launches',
+            task_id='create_pool_of_training_launches'
+        ).execute(context)
+        import os
+
+        if os.path.exists('/opt/airflow//learning_result/result.csv'):
+            print(f'Файл найден. Производим удаление')
+            os.remove('/opt/airflow//learning_result/result.csv')
+
+
     @task_group
     def dag_with_taskgroup(configs):
-        # result_train_model = PythonOperator(
-        #     task_id='train_model',
-        #     python_callable=model_predict,
-        #     op_kwargs={'config_file': configs},
-        #     # provide_context=False
-        # )
-
-        @task
+        @task(pool='pool_of_training_launches', pool_slots=1)
         def training_model(name_config):
             context = get_current_context()
             DockerOperator(
                 image='airflow-train-model',
-                command=f'python3 .//src//test_2.py --config_file {name_config} --output_dir /learning_result',
+                command=f'python3 src//train_pipeline_smp.py --config_file {name_config} --output_dir /learning_result',
                 network_mode='bridge',
                 task_id='docker-airflow-train-model',
-                # do_xcom_push=False,
-                # docker_url="unix://var/run/docker.sock",
+                docker_url="unix://var/run/docker.sock",
                 auto_remove=True,
-                # environment={
-                #     "IMAGE_ID": image_id
-                # },
+                device_requests=[
+                    docker.types.DeviceRequest(count=-1, capabilities=[['gpu']])
+                ],
+                shm_size='64g',
                 mounts=[Mount(source=LOCAL_RUNS_DIR, target='/runs', type='bind'),
                         Mount(source=LOCAL_CONFIGS_DIR, target='/configs', type='bind'),
-                        Mount(source=LOCAL_LEARNING_RESULT, target='/learning_result', type='bind'), ]
+                        Mount(source=LOCAL_LEARNING_RESULT, target='/learning_result', type='bind'),
+                        Mount(source=LOCAL_DATASETS_DIR, target='/datasets', type='bind')],
             ).execute(context=context)
 
             return name_config
@@ -131,7 +127,7 @@ with DAG(
             print(f'!!!!!!!!!!!!!!!!!!! {path_to_logging_file}')
             DockerOperator(
                 image='airflow-extracting-logging',
-                command=f'python3 .//src//reading_logs.py --path_to_log {path_to_logging_file} --path_to_save /learning_result',
+                command=f'python3 .//src//reading_logs.py --path_to_log /runs/{path_to_logging_file}/tensorboard --path_to_save /learning_result',
                 network_mode='bridge',
                 task_id='docker-airflow-extracting-logging',
                 auto_remove=True,
@@ -151,7 +147,7 @@ with DAG(
             context = get_current_context()
             DockerOperator(
                 image='airflow-save-learning-result',
-                command=f'python3 ./src/save_learning_result.py --path_to_dir_metrics /learning_result/{path_to_metric} '
+                command=f'python3 ./src/save_learning_result.py --path_to_dir_metrics /learning_result/metrics_{path_to_metric} '
                         f'--path_to_config {path_to_config} --output_file {output_file} ',
                 network_mode='bridge',
                 task_id='docker-airflow-save-learning-result',
@@ -162,33 +158,54 @@ with DAG(
 
             return output_file
 
-        @task
-        def draw_result(path_to_metric):
-            pass
-
-        # result_train_model = BashOperator(
-        #     task_id='train_model',
-        #     bash_command=f'python /opt/airflow/dags/test_2.py --config_file {configs} ',  # Передаем аргументы через команду
-        #     dag=dag
-        # )
-
-        # result_train_model = train_model(configs)
-        # result_analyze_results = analyze_results(result_train_model)
-        #
+        # @task
+        # def draw_result(path_to_metric):
+        #     print(path_to_metric)
+        #     pass
 
         name_folder_log = getting_name_log_dir(training_model(configs))
         name_folder_log = extracting_logging(name_folder_log)
         save_result(name_folder_log, configs)
-        draw_result(name_folder_log)
+
+        # draw_result(name_folder_log)
 
         # Работает
         # result_analyze_results = analyze_results(result_train_model.output)
         # result_train_model >> result_analyze_results
 
+
     @task
     def analyze_result():
-        pass
+        context = get_current_context()
+        DockerOperator(
+            image='airflow-analyze-result',
+            command=f'python3 ./src/analyze_result.py --path_to_file /learning_result/result.csv '
+                    f'--output_dir /final_result',
+            network_mode='bridge',
+            task_id='docker-airflow-analyze-result',
+            auto_remove=True,
+            mounts=[Mount(source=LOCAL_LEARNING_RESULT, target='/learning_result', type='bind'),
+                    Mount(source=LOCAL_FINAL_RESULT, target='/final_result', type='bind'), ]
+        ).execute(context=context)
 
-    tt = dag_with_taskgroup.expand(configs=read_config_files(config_folder_path))
-    tt >> analyze_result()
+
+    @task
+    def draw_result():
+        context = get_current_context()
+        DockerOperator(
+            image='airflow-visualization-graphs',
+            command=f'python3 ./src/visualize_graph.py --input_dir /final_result '
+                    f'--output_dir /final_result',
+            network_mode='bridge',
+            task_id='docker-airflow-visualization-graphs',
+            auto_remove=True,
+            mounts=[Mount(source=LOCAL_FINAL_RESULT, target='/final_result', type='bind')]
+        ).execute(context=context)
+
+
+    init_params = initializing_parameters()
+    configs_list = read_config_files(config_folder_path)
+    init_params >> configs_list
+    tt = dag_with_taskgroup.expand(configs=configs_list)
+    tt >> analyze_result() >> draw_result()
     # analyze_result(tt)

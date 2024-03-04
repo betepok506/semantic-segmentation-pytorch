@@ -1,81 +1,35 @@
 import torch
-# import torch.nn as nn
-# import torch.nn.functional as F
-# import torchvision.transforms as transforms
+import argparse
 from torch.utils.data import DataLoader
-from src.data.dataset import counting_class_pixels
-# import segmentation_models_pytorch as smp
-# from segmentation_models_pytorch.losses import DiceLoss
-# from segmentation_models_pytorch import DeepLabV3, Unet
-# from torchvision.datasets import Cityscapes  # Используем Cityscapes в качестве примера, замените на свой датасет
-# from torch.utils.data import Dataset
-# from pathlib import Path
-# from natsort import natsorted
-# from PIL import Image
-# import matplotlib.pyplot as plt
 import os
-# import random
-# from src.evaluate.metrics import compute_metrics_smp
+
+import evaluate
+import hydra
+
+import sys
+
+sys.path.append(f"{os.getcwd()}")
+print(f'Torch version: {torch.__version__}')
+
+from src.evaluate.metrics import SegmentationMetrics
+from src.data.dataset import counting_class_pixels
 from src.data.dataset import InfoClasses, AerialSegmentationDataset, get_preprocessing  # , InfoClasses, ge
 from src.models.engine import train_loop, get_criterion, get_optimizer, get_training_augmentation, get_model, \
     get_scheduler
-# from src.utils.utils import batch_reverse_one_hot, colour_code_segmentation, convert_to_images
-from src.evaluate.metrics import SegmentationMetrics
-
-import evaluate
-# import numpy as np
-# import cv2 as cv
-import hydra
-# import logging
-# import json
-# import time
-# from src.utils.tensorboard_logger import get_logger
-#
-# import albumentations as A
-# from albumentations.pytorch import ToTensorV2
-# logger = get_logger(__name__, logging.INFO, None)
+from src.enities.training_pipeline_params import TrainingConfig, read_training_pipeline_params
 from src.utils.tensorboard_logger import Logger
 
 
-# todoyes: Написать функцию визуализации картинок
-# todoyes: Написать загрузку модели
-# todoyes: Сделать метрики массивом
-# todoyes: Написать декодирование меток
-# todoyes: Внедрить конфиг
-# todoyes: Добавить логер
-# todoyes: Построить в логере графики по классам
-# todoyes: Расскидать код по файликам
-# todo: Найти как замораживать веса
+# @hydra.main(version_base=None, config_path='../configs', config_name='train_config_smp')
+def train_pipeline(**kwargs):
+    config_file = kwargs['config_file']
+    params = read_training_pipeline_params(config_file)
 
-# class FocalLoss(nn.Module):
-#     def __init__(self, alpha=1, gamma=2, reduction='mean'):
-#         super(FocalLoss, self).__init__()
-#         self.alpha = alpha
-#         self.gamma = gamma
-#         self.reduction = reduction
-#
-#     def forward(self, inputs, targets):
-#         ce_loss = F.cross_entropy(inputs, targets, reduction='none')
-#         pt = torch.exp(-ce_loss)
-#         focal_loss = self.alpha * (1 - pt) ** self.gamma * ce_loss
-#
-#         if self.reduction == 'mean':
-#             return focal_loss.mean()
-#         elif self.reduction == 'sum':
-#             return focal_loss.sum()
-#         elif self.reduction == 'none':
-#             return focal_loss
-#         else:
-#             raise ValueError("Unsupported reduction mode. Use 'mean', 'sum', or 'none'.")
-
-
-@hydra.main(version_base=None, config_path='../configs', config_name='train_config_smp')
-def train_pipeline(params):
     logger = Logger(model_name=params.model.encoder, module_name=__name__, data_name='example')
 
     # Сохраняем модель в папку запуска обучения нейронной сети
     params.training_params.save_to_checkpoint = os.path.join(logger.log_dir, 'checkpoints')
-
+    logger.info(f'Torch version: {torch.__version__}')
     # todo: Сделать описание параметров
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if params.training_params.verbose > 0:
@@ -160,29 +114,28 @@ def train_pipeline(params):
     # preprocessing_fn = smp.encoders.get_preprocessing_fn(params.model.encoder, params.model.encoder_weights)
     if params.training_params.criterion.name == 'weight_cross_entropy':
         weights_classes, number_pixels_each_class = counting_class_pixels(train_loader, params.dataset.ignore_index)
+        logger.info('\t Количество пикселей для каждого класса:')
+        sum_pixels_each_class = number_pixels_each_class.sum()
+        for ind, cls in enumerate(info_classes.get_classes()):
+            if ind + 1 == params.dataset.ignore_index:
+                logger.info(
+                    f'\t\t {cls} (Игнорируемый): {int(number_pixels_each_class[ind]):<30} \t {(number_pixels_each_class[ind] / sum_pixels_each_class) * 100 :>5.2f}%')
+            else:
+                logger.info(
+                    f'\t\t {cls}: {int(number_pixels_each_class[ind]):<30} {(number_pixels_each_class[ind] / sum_pixels_each_class) * 100:>5.2f}%')
     else:
         weights_classes = None
 
     criterion = get_criterion(params.training_params.criterion, weights_classes, device)
 
-    logger.info('\t Количество пикселей для каждого класса:')
-    sum_pixels_each_class = number_pixels_each_class.sum()
-    for ind, cls in enumerate(info_classes.get_classes()):
-        if ind + 1 == params.dataset.ignore_index:
-            logger.info(
-                f'\t\t {cls} (Игнорируемый): {int(number_pixels_each_class[ind]):<30} \t {(number_pixels_each_class[ind] / sum_pixels_each_class)*100 :>5.2f}%')
-        else:
-            logger.info(
-                f'\t\t {cls}: {int(number_pixels_each_class[ind]):<30} {(number_pixels_each_class[ind] / sum_pixels_each_class)*100:>5.2f}%')
-
-    if params.training_params.criterion.name in ['weight_cross_entropy', 'cross_entropy']:
-        logger.info('\t Веса классов:')
-        weight_classes = criterion.weight.cpu().numpy()
-        for ind, cls in enumerate(info_classes.get_classes()):
-            if ind + 1 == params.dataset.ignore_index:
-                logger.info(f'\t\t {cls} (Игнорируемый): {weight_classes[ind]}')
-            else:
-                logger.info(f'\t\t {cls}: {weight_classes[ind]}')
+    # if params.training_params.criterion.name in 'weight_cross_entropy':
+    #     logger.info('\t Веса классов:')
+    #     weight_classes = criterion.weight.cpu().numpy()
+    #     for ind, cls in enumerate(info_classes.get_classes()):
+    #         if ind + 1 == params.dataset.ignore_index:
+    #             logger.info(f'\t\t {cls} (Игнорируемый): {weight_classes[ind]}')
+    #         else:
+    #             logger.info(f'\t\t {cls}: {weight_classes[ind]}')
 
     # Todo: Вывести веса для кадого класса в случае cross_entropy
     optimizer = get_optimizer(model.parameters(), params)
@@ -206,6 +159,21 @@ def train_pipeline(params):
                device=device
                )
 
+    logger_log_dir = logger.log_dir
+    if 'output_dir' in kwargs:
+        name_logger = os.path.basename(logger_log_dir)
+        # name_logger = os.path.basename(logger.log_dir)
+        name_config_file = os.path.basename(kwargs['config_file'])
+        with open(os.path.join(kwargs['output_dir'], 'completed_' + name_config_file + '.txt'), 'w') as f:
+            f.write(f'{name_logger}')
+        print(
+            f"Save info about completed learning: {os.path.join(kwargs['output_dir'], 'completed_' + name_config_file + '.txt')}")
+
 
 if __name__ == "__main__":
-    train_pipeline()
+    parser = argparse.ArgumentParser(description="")
+    parser.add_argument("--config_file", help="")
+    parser.add_argument("--output_dir", help="")
+    args = parser.parse_args()
+    #todo передать параметры и проверить их валидность
+    train_pipeline(**vars(args))
