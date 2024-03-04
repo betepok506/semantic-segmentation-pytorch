@@ -6,6 +6,7 @@ data_logging/
 models/
 !src/models
 outputs
+configs/configs_experiments
 */outputs
 runs/
 */runs/

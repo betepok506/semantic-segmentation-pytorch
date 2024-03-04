@@ -6,7 +6,7 @@ import os
 # from src.enities.dataset_params import DatasetParams
 # from src.enities.training_params import TrainingParams
 import sys
-sys.path.append("/")
+sys.path.append(f"{os.getcwd()}")
 
 print(f'CWD: {os.getcwd()}')
 print(f'CWD: {os.listdir("./")}')
@@ -23,7 +23,11 @@ def model_predict(**kwargs) -> None:
     config_file = kwargs['config_file']
     params = read_training_pipeline_params(config_file)
     # logger = Logger(model_name=params.model.encoder, module_name=__name__, data_name='testing')
-
+    params.dataset.path_to_decode_classes2rgb = os.path.join(os.getcwd(), params.dataset.path_to_decode_classes2rgb)
+    print(f'!!!!!!!!!!!! path: {params.dataset.path_to_decode_classes2rgb}')
+    print(f'folder datasets {os.listdir("datasets")}')
+    print(f'folder datasets/Dubai {os.listdir("datasets//Dubai")}')
+    print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! exists : {os.path.exists(params.dataset.path_to_decode_classes2rgb)}")
     logger_log_dir = '/runs/20231227_103420_resnet34_example'
     if 'output_dir' in kwargs:
         name_logger = os.path.basename(logger_log_dir)
