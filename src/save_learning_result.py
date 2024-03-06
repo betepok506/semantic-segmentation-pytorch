@@ -39,13 +39,28 @@ def main(**kwargs) -> None:
                    'Activation': params.model.activation,
                    'Dataset': params.dataset.path_to_data,
                    'Lr': params.training_params.lr,
-                   'Epochs': params.training_params.num_train_epochs,
+                   'Use augmentation': params.training_params.use_augmentation,
+                   'Is clip grad norm': params.training_params.is_clip_grad_norm,
+                   'Is clip grad value': params.training_params.is_clip_grad_value,
+
                    'Criterion': params.training_params.criterion.name,
                    'Criterion alpha': params.training_params.criterion.alpha,
                    'Criterion gamma': params.training_params.criterion.gamma,
+
                    'Optimizer': params.training_params.optimizer.name,
+
+                   'Scheduler': params.training_params.scheduler.name,
+                   'Scheduler is_use': params.training_params.scheduler.is_use,
+                   'Scheduler step_size': params.training_params.scheduler.step_size,
+                   'Scheduler last_epoch': params.training_params.scheduler.last_epoch,
+                   'Scheduler factor': params.training_params.scheduler.factor,
+                   'Scheduler patience': params.training_params.scheduler.patience,
+
+                   'Train batch size': params.training_params.train_batch_size,
+                   'Eval batch size': params.training_params.eval_batch_size,
                    'Image size': str(params.training_params.image_size),
                    'Image crop': str(params.training_params.image_crop),
+
                    'Config name': path_to_config,
                    'Path to metrics': path_to_dir_metrics}
     new_df = pd.DataFrame(data_append, index=[0])

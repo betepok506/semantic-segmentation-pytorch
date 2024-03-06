@@ -99,6 +99,17 @@ DeepLabV3+ | deeplabv3plus      |
 
 Все поддерживаемые энкодеры: https://smp.readthedocs.io/en/latest/encoders.html 
 
+Будут использоваться следующие кодировщики:
+
+ Модель   | Weights      | Params, M |
+----------|--------------|-----------|
+resnet101 | imagenet         | 42M       |
+timm-regnety_320 | imagenet | 141M      |
+timm-efficientnet-l2 | noisy-student-475        | 474M      |
+resnext101_32x48d | instagram      | 826M      |
+
+
+
 ---
 # Результаты обучения
 

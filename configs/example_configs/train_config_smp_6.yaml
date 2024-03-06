@@ -1,0 +1,45 @@
+comment: "Cliping gradient value"
+short_comment: "resnet101_clip_value"
+model:
+  name: "unet"
+  encoder: "resnet101"
+  encoder_weights: "imagenet"
+  path_to_model_weight: ""
+  activation: "softmax2d"
+
+dataset:
+  path_to_data: "/datasets/Dubai"
+  path_to_decode_classes2rgb: "/datasets/Dubai/classes2rgb.json"
+  ignore_index: 255
+  num_labels: 6
+
+training_params:
+  lr: 6e-7
+  num_train_epochs: 2
+  use_augmentation: True
+  is_clip_grad_norm: False
+  is_clip_grad_value: True
+  criterion:
+    name: 'cross_entropy'
+    alpha: 1
+    gamma: 2
+    smoothing: 0.0
+    mode: 'multilabel'
+  optimizer:
+    name: 'AdamW'
+  scheduler:
+    name: 'CosineAnnealingWarmRestarts' # ReduceLROnPlateau
+    is_use: False
+    step_size: 30 # Количество эпох, по прошествии которых будет уменьшен LR в StepLR
+    last_epoch: 150 # До какой жпохи будет происходить уменьшение LR в StepLR
+    factor: 0.5 # На сколько будет уменьшен lr в StepLR ReduceLROnPlateau
+    patience: 10 # Количество эпох без улучшений, после которых скорость обучения будет снижена. ReduceLROnPlateau
+  image_size: [256, 256]
+  image_crop: [256, 256]
+  train_batch_size: 50
+  eval_batch_size: 20
+  verbose: 0 # 0 - ничего не выводить, 1 сохранять изображения в папку output_dir_result
+  output_dir_result: "./result"
+  save_to_checkpoint: './models/checkpoints'
+  num_workers_data_loader: 4
+  report_to: "tensorboard"

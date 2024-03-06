@@ -21,6 +21,7 @@ from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.decorators import task, task_group
 # from src.test_2 import model_predict
 from docker.types import Mount
+from airflow.utils.trigger_rule import TriggerRule
 import os
 from utils import LOCAL_RUNS_DIR, \
     LOCAL_LEARNING_RESULT, \
@@ -49,6 +50,7 @@ default_args = {
     'email': ['airflow@example.com'],
     'email_on_failure': False,
     'email_on_retry': False,
+
     'retries': 1,
 }
 
@@ -58,7 +60,8 @@ config_folder_path = "./configs/configs_experiments"
 with DAG(
         'training_model',
         default_args=default_args,
-        schedule_interval='@daily',
+        # schedule_interval='@daily',
+        schedule_interval=None,
         start_date=datetime(2024, 3, 2),
         render_template_as_native_obj=True,
         params={
@@ -174,7 +177,7 @@ with DAG(
         # result_train_model >> result_analyze_results
 
 
-    @task
+    @task(trigger_rule='all_done')
     def analyze_result():
         context = get_current_context()
         DockerOperator(
@@ -185,7 +188,8 @@ with DAG(
             task_id='docker-airflow-analyze-result',
             auto_remove=True,
             mounts=[Mount(source=LOCAL_LEARNING_RESULT, target='/learning_result', type='bind'),
-                    Mount(source=LOCAL_FINAL_RESULT, target='/final_result', type='bind'), ]
+                    Mount(source=LOCAL_FINAL_RESULT, target='/final_result', type='bind'), ],
+            # trigger_rule='none_failed_min_one_success'
         ).execute(context=context)
 
 
@@ -207,5 +211,6 @@ with DAG(
     configs_list = read_config_files(config_folder_path)
     init_params >> configs_list
     tt = dag_with_taskgroup.expand(configs=configs_list)
+    # task_analyze = analyze_result
     tt >> analyze_result() >> draw_result()
     # analyze_result(tt)

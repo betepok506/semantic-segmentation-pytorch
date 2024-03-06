@@ -9,10 +9,6 @@ sys.path.append("/")
 from src.utils.visualization_graphs import VisualizationExtractedLogData
 
 
-def dir_processing(path_to_input_dir: str, path_to_output_dir: str):
-    pass
-
-
 def main(**kwargs):
     input_dir = kwargs['input_dir']
     output_dir = kwargs['output_dir']
@@ -24,7 +20,8 @@ def main(**kwargs):
         raise NotADirectoryError("The input_dir parameter must be a directory!")
 
     if kwargs['one_launch']:
-        dir_processing(input_dir, output_dir)
+        raise "Данный функционал в разработке"
+        #dir_processing(input_dir, output_dir)
     else:
         for cur_folder in os.listdir(input_dir):
 

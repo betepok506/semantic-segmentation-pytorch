@@ -257,7 +257,10 @@ def train_loop(model,
         metric_evaluate.clear()
         # todo: Параметр для использования scheduler
         if params.training_params.scheduler.is_use:
-            scheduler.step()
+            if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                scheduler.step(result_evaluate['val_loss'])
+            else:
+                scheduler.step()
 
     end_time_training = time.time()
 
@@ -317,7 +320,7 @@ def get_scheduler(optimizer, params: SchedulerParams):
         )
     elif params.name == 'StepLR':
         scheduler = torch.optim.lr_scheduler.StepLR(
-            optimizer, step_size=params.step_size, gamma=params.factor, last_epoch=params.last_epoch
+            optimizer, step_size=params.step_size, gamma=params.factor
         )
     else:
         raise NotImplementedError("This error scheduler was not found!")
