@@ -2,14 +2,10 @@ import torch
 import argparse
 from torch.utils.data import DataLoader
 import os
-
 import evaluate
 import hydra
-
 import sys
-
 sys.path.append(f"{os.getcwd()}")
-print(f'Torch version: {torch.__version__}')
 
 from src.evaluate.metrics import SegmentationMetrics
 from src.data.dataset import counting_class_pixels
@@ -25,12 +21,12 @@ def train_pipeline(**kwargs):
     config_file = kwargs['config_file']
     params = read_training_pipeline_params(config_file)
 
-    logger = Logger(model_name=params.model.encoder, module_name=__name__, data_name='example')
+    logger = Logger(model_name=params.model.encoder, module_name=__name__, data_name=params.short_comment)
 
     # Сохраняем модель в папку запуска обучения нейронной сети
     params.training_params.save_to_checkpoint = os.path.join(logger.log_dir, 'checkpoints')
     logger.info(f'Torch version: {torch.__version__}')
-    # todo: Сделать описание параметров
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if params.training_params.verbose > 0:
         logger.info(
@@ -65,6 +61,9 @@ def train_pipeline(**kwargs):
     logger.info(f"\t\tTrain Batch size: {params.training_params.train_batch_size}")
     logger.info(f"\t\tEvaluate Batch size: {params.training_params.eval_batch_size}")
     logger.info(f"\t\tLr: {params.training_params.lr}")
+    logger.info(f"\t\tUse augmentation: {params.training_params.use_augmentation}")
+    logger.info(f"\t\tUse Clip grad norm: {params.training_params.is_clip_grad_norm}")
+    logger.info(f"\t\tUse Clip grad value: {params.training_params.is_clip_grad_value}")
     logger.info(f"\t\tКоличество эпох: {params.training_params.num_train_epochs}")
     logger.info(f"\t\tDevice: {device}")
 
@@ -79,7 +78,7 @@ def train_pipeline(**kwargs):
                                           crop_width=params.training_params.image_crop[1],
                                           resize_height=params.training_params.image_size[0],
                                           resize_width=params.training_params.image_size[1],
-                                          )
+                                          add_augmentation=params.training_params.use_augmentation)
 
     train_dataset = AerialSegmentationDataset(root=params.dataset.path_to_data,
                                               class_rgb_values=info_classes.get_colors(),
@@ -114,15 +113,15 @@ def train_pipeline(**kwargs):
     # preprocessing_fn = smp.encoders.get_preprocessing_fn(params.model.encoder, params.model.encoder_weights)
     if params.training_params.criterion.name == 'weight_cross_entropy':
         weights_classes, number_pixels_each_class = counting_class_pixels(train_loader, params.dataset.ignore_index)
-        logger.info('\t Количество пикселей для каждого класса:')
-        sum_pixels_each_class = number_pixels_each_class.sum()
-        for ind, cls in enumerate(info_classes.get_classes()):
-            if ind + 1 == params.dataset.ignore_index:
-                logger.info(
-                    f'\t\t {cls} (Игнорируемый): {int(number_pixels_each_class[ind]):<30} \t {(number_pixels_each_class[ind] / sum_pixels_each_class) * 100 :>5.2f}%')
-            else:
-                logger.info(
-                    f'\t\t {cls}: {int(number_pixels_each_class[ind]):<30} {(number_pixels_each_class[ind] / sum_pixels_each_class) * 100:>5.2f}%')
+        # logger.info('\t Количество пикселей для каждого класса:')
+        # sum_pixels_each_class = number_pixels_each_class.sum()
+        # for ind, cls in enumerate(info_classes.get_classes()):
+        #     if ind + 1 == params.dataset.ignore_index:
+        #         logger.info(
+        #             f'\t\t {cls} (Игнорируемый): {int(number_pixels_each_class[ind]):<30} \t {(number_pixels_each_class[ind] / sum_pixels_each_class) * 100 :>5.2f}%')
+        #     else:
+        #         logger.info(
+        #             f'\t\t {cls}: {int(number_pixels_each_class[ind]):<30} {(number_pixels_each_class[ind] / sum_pixels_each_class) * 100:>5.2f}%')
     else:
         weights_classes = None
 
@@ -139,7 +138,7 @@ def train_pipeline(**kwargs):
 
     # Todo: Вывести веса для кадого класса в случае cross_entropy
     optimizer = get_optimizer(model.parameters(), params)
-    scheduler = get_scheduler(optimizer, params)
+    scheduler = get_scheduler(optimizer, params.training_params.scheduler)
 
     metric_iou = evaluate.load("mean_iou")
     metric_train = SegmentationMetrics([metric_iou], num_labels=params.dataset.num_labels,
@@ -175,5 +174,5 @@ if __name__ == "__main__":
     parser.add_argument("--config_file", help="")
     parser.add_argument("--output_dir", help="")
     args = parser.parse_args()
-    #todo передать параметры и проверить их валидность
+    # todo передать параметры и проверить их валидность
     train_pipeline(**vars(args))

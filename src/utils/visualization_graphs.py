@@ -94,3 +94,22 @@ class VisualizationExtractedLogData(AnalyzeExtractedDataLogging):
         sns.set_style("whitegrid")
         plt.close(fig)
         return fig
+
+
+def plot_heatmap(data, list_classes):
+    plt.figure(figsize=(10, 5))
+    sns.set_style('white')
+    sns.heatmap(data, annot=True, fmt='.2g',
+                annot_kws={"size": 8}, cmap='Blues',
+                xticklabels=list_classes, yticklabels=list_classes)
+    plt.subplots_adjust(left=0.15, right=0.95, top=0.95, bottom=0.10)
+    ax = plt.gca()
+    # Поворачиваем подписи оси x
+    for tick in ax.get_xticklabels():
+        tick.set_rotation(5)
+
+        # Поворачиваем подписи оси x
+    for tick in ax.get_yticklabels():
+        tick.set_rotation(45)
+    plt.draw()
+    return plt.gcf()

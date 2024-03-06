@@ -50,6 +50,12 @@ login: airflow
 password: airflow
 ```
 
+# Запуск TensorBoard
+
+```
+tensorboard --logdir='./runs'
+```
+
 # Конфигурирование
 
 ## Функция потерь

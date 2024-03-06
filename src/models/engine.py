@@ -3,13 +3,18 @@ import time
 import torch
 from segmentation_models_pytorch.losses import DiceLoss, FocalLoss
 from src.utils.utils import batch_reverse_one_hot, colour_code_segmentation, convert_to_images, print_metrics, visualize
-
+from src.utils.visualization_graphs import plot_heatmap
+from src.enities.training_params import CriterionParams, SchedulerParams
+from src.enities.training_pipeline_params import TrainingConfig
 import numpy as np
 import json
 import os
 import cv2 as cv
+import matplotlib.pyplot as plt
+import seaborn as sns
 import albumentations as albu
 from segmentation_models_pytorch import DeepLabV3, Unet, FPN, UnetPlusPlus, Linknet, PSPNet, MAnet, PAN, DeepLabV3Plus
+from torchmetrics.classification import MulticlassConfusionMatrix
 
 
 def evaluate_epoch(model,
@@ -31,7 +36,7 @@ def evaluate_epoch(model,
     random_indices = np.random.choice(len(val_loader),
                                       size=int(np.ceil(NUM_IMAGES_VISUALIZE / val_loader.batch_size)),
                                       replace=False)
-
+    conf_matrix = MulticlassConfusionMatrix(num_classes=params.dataset.num_labels).to(device)
     model.eval()
     start_time_evaluate_epoch = time.time()
     with torch.no_grad():
@@ -49,6 +54,8 @@ def evaluate_epoch(model,
 
             # Подсчет метрик
             metric.compute_metrics_smp([predictions.detach().cpu().numpy(), converted_target_batch])
+            # Обновление данных матрицы ошибок
+            conf_matrix.update(predictions, torch.from_numpy(converted_target_batch).to(device))
 
             # Отображение примера сегментации в логере
             if idx in random_indices:
@@ -82,6 +89,14 @@ def evaluate_epoch(model,
     result['epoch'] = epoch
     result['val_loss'] = val_loss
     result['time'] = time_evaluate
+
+    result_conf_matrix = conf_matrix.compute()
+
+    fig = plot_heatmap(result_conf_matrix.detach().cpu().numpy(), info_classes.get_classes())
+    fig.canvas.draw()
+    fig_numpy = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+    fig_numpy = fig_numpy.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    logger.add_graph(fig_numpy, epoch, len(val_loader), stage='Train')
 
     logger.add_scalar("Validate/Loss", val_loss / num_batches, epoch)
     logger.add_scalar("Validate/Mean Accuracy", metric.calculated_metrics['mean_accuracy'], epoch)
@@ -117,7 +132,7 @@ def train_loop(model,
                metric_train,
                metric_evaluate,
                info_classes,
-               params,
+               params: TrainingConfig,
                logger,
                device='cpu',
                ):
@@ -126,6 +141,8 @@ def train_loop(model,
     decrease = 0
     # from torchmetrics import JaccardIndex, ConfusionMatrix
     # jaccard_metric = JaccardIndex(task="multiclass", num_classes=6, average=None).to(device)
+    conf_matrix = MulticlassConfusionMatrix(num_classes=params.dataset.num_labels).to(device)
+
     start_time_training = time.time()
     for epoch in range(1, params.training_params.num_train_epochs + 1):
         model.train()
@@ -140,6 +157,11 @@ def train_loop(model,
             loss = criterion(outputs, targets)
             loss.backward()
             train_loss += loss.item()
+            if params.training_params.is_clip_grad_norm:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=2.0, norm_type=2)
+
+            if params.training_params.is_clip_grad_value:
+                torch.nn.utils.clip_grad_value_(model.parameters(), clip_value=1)
 
             optimizer.step()
 
@@ -148,8 +170,9 @@ def train_loop(model,
 
             # Подсчет метрик
             metric_train.compute_metrics_smp([predictions.detach().cpu().numpy(), converted_target_batch])
-            # tt = predictions
-            # ttt = torch.from_numpy(converted_target_batch).to(device)
+            # Обновление данных матрицы ошибок
+            conf_matrix.update(predictions, torch.from_numpy(converted_target_batch).to(device))
+
             # jaccard_index = jaccard_metric(tt, ttt)
             # iou_mean = torch.mean(jaccard_index)
             # print(7)
@@ -158,6 +181,7 @@ def train_loop(model,
         train_loss /= len(train_loader)
 
         logger.info(f' ----=== Epoch: {epoch} ===--- ')
+        logger.add_scalar("Train/lr", optimizer.param_groups[0]['lr'], epoch)
 
         # Вывод метрик обучения
         logger.add_scalar("Train/Loss", train_loss, epoch)
@@ -181,6 +205,13 @@ def train_loop(model,
 
         logger.add_scalars("Train/Accuracy by classes", accuracy_by_classes, epoch)
         logger.add_scalars("Train/IoU by classes", iou_by_classes, epoch)
+        result = conf_matrix.compute()
+
+        fig = plot_heatmap(result.detach().cpu().numpy(), info_classes.get_classes())
+        fig.canvas.draw()
+        fig_numpy = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
+        fig_numpy = fig_numpy.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+        logger.add_graph(fig_numpy, epoch, len(train_loader), stage='Train')
 
         # Оценка модели
         result_evaluate = evaluate_epoch(model, val_loader,
@@ -224,7 +255,9 @@ def train_loop(model,
         # Очистка метрик, подсчитанных за эпоху
         metric_train.clear()
         metric_evaluate.clear()
-        scheduler.step()
+        # todo: Параметр для использования scheduler
+        if params.training_params.scheduler.is_use:
+            scheduler.step()
 
     end_time_training = time.time()
 
@@ -238,7 +271,7 @@ class TypeCriterion:
     WEIGHT_CROSS_ENTROPY = 'weight_cross_entropy'
 
 
-def get_criterion(params, weights_classes, device=None):
+def get_criterion(params: CriterionParams, weights_classes, device=None):
     '''
     Фунция для выбора функции потерь в зависимости от переданных параметров конфигурации
 
@@ -250,10 +283,14 @@ def get_criterion(params, weights_classes, device=None):
     if params.name == TypeCriterion.DICE_LOSS:
         criterion = DiceLoss(mode=params.mode)
     elif params.name == TypeCriterion.CROSS_ENTROPY:
-        criterion = torch.nn.CrossEntropyLoss()
-    elif params.name == TypeCriterion.WEIGHT_CROSS_ENTROPY:
+        if params.smoothing is not None:
+            criterion = torch.nn.CrossEntropyLoss(label_smoothing=params.smoothing)
+        else:
+            criterion = torch.nn.CrossEntropyLoss()
 
+    elif params.name == TypeCriterion.WEIGHT_CROSS_ENTROPY:
         criterion = torch.nn.CrossEntropyLoss(weight=torch.from_numpy(weights_classes).to(device))
+
     elif params.name == TypeCriterion.FOCAL_LOSS:
         criterion = FocalLoss(mode=params.mode,
                               alpha=params.alpha,
@@ -269,10 +306,22 @@ class TypeOptimizer:
     ADAMW = "AdamW"
 
 
-def get_scheduler(optimizer, params):
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-        optimizer, T_0=1, T_mult=2, eta_min=5e-5,
-    )
+def get_scheduler(optimizer, params: SchedulerParams):
+    if params.name == 'CosineAnnealingWarmRestarts':
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            optimizer, T_0=1, T_mult=2, eta_min=5e-5,
+        )
+    elif params.name == 'ReduceLROnPlateau':
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, 'min', factor=params.factor, patience=params.patience
+        )
+    elif params.name == 'StepLR':
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer, step_size=params.step_size, gamma=params.factor, last_epoch=params.last_epoch
+        )
+    else:
+        raise NotImplementedError("This error scheduler was not found!")
+
     return scheduler
 
 
@@ -353,34 +402,35 @@ def get_model(params):
 
 
 def get_training_augmentation(crop_height=256, crop_width=256,
-                              resize_height=None, resize_width=None):
+                              resize_height=None, resize_width=None, add_augmentation=True):
     if resize_height is None:
         resize_height = crop_height
     if resize_width is None:
         resize_width = crop_width
 
-    train_transform = [
-        albu.OneOf(
+    train_transform = []
+    if add_augmentation:
+        train_transform.append(albu.OneOf(
             [
                 albu.HorizontalFlip(p=0.5),
                 albu.VerticalFlip(p=0.5),
             ],
             p=0.7,
-        ),
-        albu.Rotate(limit=(-89, 89), p=0.7),
-
-        albu.OneOf(
+        ))
+        train_transform.append(albu.Rotate(limit=(-89, 89), p=0.7))
+        train_transform.append(albu.OneOf(
             [
                 albu.GaussNoise(var_limit=(10.0, 25.0), p=0.7),
             ],
             p=.5,
-        ),
+        ))
 
-        albu.PadIfNeeded(min_height=crop_height, min_width=crop_width, border_mode=cv.BORDER_CONSTANT, value=[0, 0, 0],
-                         always_apply=True),
-        albu.RandomCrop(height=crop_height, width=crop_width, always_apply=True),
-        albu.Resize(height=resize_height, width=resize_width)
-    ]
+    train_transform.append(
+        albu.PadIfNeeded(min_height=crop_height, min_width=crop_width,
+                         border_mode=cv.BORDER_CONSTANT, value=[0, 0, 0],
+                         always_apply=True))
+    train_transform.append(albu.RandomCrop(height=crop_height, width=crop_width, always_apply=True))
+    train_transform.append(albu.Resize(height=resize_height, width=resize_width))
 
     transform = albu.Compose(train_transform)
     return transform

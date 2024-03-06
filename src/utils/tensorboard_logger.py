@@ -13,6 +13,8 @@ import pathlib
 import torch
 import datetime
 import logging
+
+
 # import sys
 # from util.checkpoint import *
 # import copy
@@ -154,6 +156,17 @@ class Logger:
         self._save_torch_images(path_to_save, grid, epoch, n_batch)
         # Add images to tensorboard
         self.writer.add_image(img_name, grid, step)
+
+    def add_graph(self, graph, epoch, num_batches, stage='Train'):
+        step = epoch * num_batches
+        path_to_save = os.path.join(self.log_dir, 'graph', stage)
+        Logger._make_dir(path_to_save)
+
+        img_name = '{}/graph_{}_{}'.format(self.comment, stage, '')
+        image = Image.fromarray(graph)
+        image.save(os.path.join(path_to_save, f"{epoch}_{num_batches}.png"))
+        graph = np.transpose(graph, (2, 0, 1))
+        self.writer.add_image(img_name, graph, step)
 
     def _save_torch_images(self, path_to_save, grid, epoch, n_batch):
         # result = Image.fromarray(grid.numpy().transpose(1, 2, 0))

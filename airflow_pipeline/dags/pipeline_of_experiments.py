@@ -54,7 +54,7 @@ default_args = {
 
 # Путь до папки с файлами конфигурации
 config_folder_path = "./configs/configs_experiments"
-
+# todo: изменить время запуска
 with DAG(
         'training_model',
         default_args=default_args,

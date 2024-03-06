@@ -25,6 +25,7 @@ import yaml
 @dataclass()
 class TrainingConfig:
     comment: str
+    short_comment: str
 
     # Model
     model: ModelParams
