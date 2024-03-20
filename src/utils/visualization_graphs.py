@@ -51,13 +51,13 @@ class VisualizationExtractedLogData(AnalyzeExtractedDataLogging):
                  'class': metric.metric_class}]
 
     @staticmethod
-    def smooth(scalars: List[float], weight: float) -> List[float]:  # Weight between 0 and 1
-        last = scalars[0]  # First value in the plot (first timestep)
+    def smooth(scalars: List[float], weight: float) -> List[float]:
+        last = scalars[0]
         smoothed = list()
         for point in scalars:
-            smoothed_val = last * weight + (1 - weight) * point  # Calculate smoothed value
-            smoothed.append(smoothed_val)  # Save it
-            last = smoothed_val  # Anchor the last smoothed value
+            smoothed_val = last * weight + (1 - weight) * point
+            smoothed.append(smoothed_val)
+            last = smoothed_val
 
         return smoothed
 
@@ -90,6 +90,9 @@ class VisualizationExtractedLogData(AnalyzeExtractedDataLogging):
         # Добавление названия графика
         plt.title(list_data[0]['title'], fontsize=16)
         plt.grid(True)
+        if len(list_data) > 1:
+            plt.legend(title='Classes', loc='center left', bbox_to_anchor=(1, 0.5))
+            plt.tight_layout()
         sns.set_palette("husl")
         sns.set_style("whitegrid")
         plt.close(fig)

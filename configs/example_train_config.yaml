@@ -1,0 +1,44 @@
+comment: "" # Комментарий к запуску
+short_comment: "" # Короткий комментарий, который будет приписан к названию каталога запуска
+model:
+  name: "unet" # Название модели
+  encoder: "resnet34" # Имя кодировщика модели
+  encoder_weights: "imagenet" # Предобученные веса
+  path_to_model_weight: "" # Путь до каталога с весами модели
+  activation: "softmax2d" # Функция активации между слоями
+dataset:
+  path_to_data: "D:/diploma_project/datasets/Dubai" # Путь до папки с набором данных
+  path_to_decode_classes2rgb: "D:/diploma_project/datasets/Dubai/classes2rgb.json" # Путь до json файла, для декодирования классов в их цвет
+  ignore_index: 255 # Индекс, который будет игнорироваться при подсчете метрик
+  num_labels: 6 # Количества классов в датасете (Вычисляется автоматически внутри скрипта тренировки)
+
+training_params:
+  lr: 6e-7 # Скорость обучения
+  num_train_epochs: 2 # Количество эпох обучения
+  use_augmentation: False # Флаг использовать ли аугментацию
+  is_clip_grad_norm: False # Флаг который означает использовать ли клипинг градиентов по норме
+  is_clip_grad_value: False # Флаг который означает использовать ли клипинг градиентов по значению
+  criterion:
+    name: 'cross_entropy' # Функция ошибки
+    alpha: 1
+    gamma: 2
+    smoothing: 0.1
+    mode: 'multilabel'
+  optimizer:
+    name: 'AdamW'
+  scheduler:
+    name: 'CosineAnnealingWarmRestarts' # ReduceLROnPlateau
+    is_use: True
+    step_size: 30 # Количество эпох, по прошествии которых будет уменьшен LR в StepLR
+    last_epoch: 150 # До какой жпохи будет происходить уменьшение LR в StepLR
+    factor: 0.5 # На сколько будет уменьшен lr в StepLR ReduceLROnPlateau
+    patience: 10 # Количество эпох без улучшений, после которых скорость обучения будет снижена. ReduceLROnPlateau
+  image_size: [256, 256]
+  image_crop: [256, 256]
+  train_batch_size: 16
+  eval_batch_size: 16
+  verbose: 0 # 0 - ничего не выводить, 1 сохранять изображения в папку output_dir_result
+  output_dir_result: "./result"
+  save_to_checkpoint: './models/checkpoints'
+  num_workers_data_loader: 4
+  report_to: "tensorboard"

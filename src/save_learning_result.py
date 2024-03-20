@@ -46,6 +46,7 @@ def main(**kwargs) -> None:
                    'Criterion': params.training_params.criterion.name,
                    'Criterion alpha': params.training_params.criterion.alpha,
                    'Criterion gamma': params.training_params.criterion.gamma,
+                   'Criterion smoothing': params.training_params.criterion.smoothing,
 
                    'Optimizer': params.training_params.optimizer.name,
 
